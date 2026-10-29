@@ -48,6 +48,103 @@ function calculateAge(dobString: string): number {
   return Math.max(0, age);
 }
 
+function cleanIntlPhone(raw: string): string {
+  const digitsOnly = raw.trim().replace(/[\s().-]/g, "");
+  if (!digitsOnly) return "";
+  if (digitsOnly.startsWith("+")) return digitsOnly;
+  if (digitsOnly.length === 10) return `+91${digitsOnly}`;
+  return `+${digitsOnly}`;
+}
+
+const INITIAL_SEEDED_PATIENTS: PatientRecordItem[] = [
+  {
+    id: "seed-pt-20496",
+    hospitalPatientIdentifier: "PT-20496",
+    fullName: "Elena Marlowe",
+    dob: "1984-04-16",
+    age: calculateAge("1984-04-16"),
+    gender: "Female",
+    personalPhone: "+1 (617) 555-0142",
+    sharedPhone: "+1 (617) 555-0188",
+    relationship: "Spouse / partner",
+    email: "elena.marlowe@caretrack.health",
+    address: "184 Willow Street, Boston, MA",
+    isPhoneVerified: true,
+    createdAt: "2026-10-21T09:15:00.000Z",
+  },
+  {
+    id: "seed-pt-31842",
+    hospitalPatientIdentifier: "PT-31842",
+    fullName: "Marcus Chen",
+    dob: "1977-09-02",
+    age: calculateAge("1977-09-02"),
+    gender: "Male",
+    personalPhone: "+1 (617) 555-0195",
+    email: "marcus.chen@caretrack.health",
+    address: "26 Harrison Avenue, Boston, MA",
+    isPhoneVerified: true,
+    createdAt: "2026-10-18T14:40:00.000Z",
+  },
+  {
+    id: "seed-pt-58213",
+    hospitalPatientIdentifier: "PT-58213",
+    fullName: "Priya Shah",
+    dob: "1992-01-28",
+    age: calculateAge("1992-01-28"),
+    gender: "Female",
+    personalPhone: "+1 (857) 555-0128",
+    sharedPhone: "+1 (857) 555-0103",
+    relationship: "Parent",
+    email: "priya.shah@caretrack.health",
+    address: "58 Beacon Street, Somerville, MA",
+    isPhoneVerified: false,
+    createdAt: "2026-10-16T11:05:00.000Z",
+  },
+  {
+    id: "seed-pt-74601",
+    hospitalPatientIdentifier: "PT-74601",
+    fullName: "Jordan Ellis",
+    dob: "1969-06-11",
+    age: calculateAge("1969-06-11"),
+    gender: "Non-binary",
+    personalPhone: "+1 (781) 555-0164",
+    email: "jordan.ellis@caretrack.health",
+    address: "305 Main Street, Cambridge, MA",
+    isPhoneVerified: true,
+    createdAt: "2026-10-11T08:25:00.000Z",
+  },
+  {
+    id: "seed-pt-49107",
+    hospitalPatientIdentifier: "PT-49107",
+    fullName: "Avery Thompson",
+    dob: "2001-12-04",
+    age: calculateAge("2001-12-04"),
+    gender: "Other",
+    personalPhone: "+1 (339) 555-0171",
+    sharedPhone: "+1 (339) 555-0136",
+    relationship: "Caregiver",
+    email: "avery.thompson@caretrack.health",
+    address: "71 Highland Avenue, Brookline, MA",
+    isPhoneVerified: false,
+    createdAt: "2026-10-07T16:10:00.000Z",
+  },
+  {
+    id: "seed-pt-82539",
+    hospitalPatientIdentifier: "PT-82539",
+    fullName: "Noah Williams",
+    dob: "1958-03-22",
+    age: calculateAge("1958-03-22"),
+    gender: "Male",
+    personalPhone: "+1 (781) 555-0116",
+    sharedPhone: "+1 (781) 555-0148",
+    relationship: "Child",
+    email: "noah.williams@caretrack.health",
+    address: "92 Centre Street, Newton, MA",
+    isPhoneVerified: true,
+    createdAt: "2026-09-29T10:30:00.000Z",
+  },
+];
+
 function formatDate(iso: string): string {
   if (!iso) return "—";
   try {
@@ -73,7 +170,7 @@ function initials(name: string): string {
 
 export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
   const { user, logout } = useAuth();
-  const [patients, setPatients] = useState<PatientRecordItem[]>([]);
+  const [patients, setPatients] = useState<PatientRecordItem[]>(INITIAL_SEEDED_PATIENTS);
   const [searchId, setSearchId] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -128,7 +225,7 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
         createdAt: result.created_at,
       };
       setPatients((prev) => {
-        const filtered = prev.filter((p) => p.id !== record.id);
+        const filtered = prev.filter((p) => p.hospitalPatientIdentifier !== record.hospitalPatientIdentifier);
         return [record, ...filtered];
       });
       setNotice(`Patient record ${result.hospital_patient_identifier} found.`);
@@ -160,6 +257,8 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
         formData.hospitalPatientIdentifier.trim() ||
         `PT-${Math.floor(1000 + Math.random() * 8999)}`;
 
+      const primaryPhone = cleanIntlPhone(formData.personalPhone);
+
       // 1. Authoritative Backend Patient Creation
       const createdPatient = await createPatient({
         hospital_patient_identifier: finalIdentifier,
@@ -167,26 +266,33 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
         date_of_birth: formData.dob,
       });
 
-      // 2. Authoritative Primary Contact Creation
+      // 2. Authoritative Primary Contact Creation with mandatory evidence fields
       await createContact(createdPatient.id, {
         channel: "voice",
-        destination: formData.personalPhone.trim(),
+        destination: primaryPhone,
         is_shared: false,
+        sharing_status_source: "patient_direct_declaration",
         verified: formData.phoneVerified,
+        verification_source: formData.phoneVerified ? "in_person_reception" : undefined,
       });
 
-      // 3. Optional shared contact
+      // 3. Optional shared contact with SMS channel & sharing evidence
       if (formData.sharedPhone.trim()) {
         try {
+          const sharedPhone = cleanIntlPhone(formData.sharedPhone);
+          const sharingSource = `patient_declared_${(formData.relationship || "family")
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, "_")}`;
+
           await createContact(createdPatient.id, {
-            channel: "voice",
-            destination: formData.sharedPhone.trim(),
+            channel: "sms",
+            destination: sharedPhone,
             is_shared: true,
-            sharing_status_source: formData.relationship || "family",
+            sharing_status_source: sharingSource,
             verified: false,
           });
-        } catch {
-          // Non-fatal if secondary fails
+        } catch (secErr) {
+          console.warn("Shared contact creation notice:", secErr);
         }
       }
 
@@ -197,8 +303,8 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
         dob: formData.dob,
         age: calculatedAge,
         gender: formData.gender,
-        personalPhone: formData.personalPhone.trim(),
-        sharedPhone: formData.sharedPhone.trim() || undefined,
+        personalPhone: primaryPhone,
+        sharedPhone: formData.sharedPhone.trim() ? cleanIntlPhone(formData.sharedPhone) : undefined,
         relationship: formData.relationship,
         email: formData.email.trim() || undefined,
         address: formData.address.trim() || undefined,
@@ -553,6 +659,7 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
                   <input
                     type="date"
                     required
+                    max={new Date().toISOString().split("T")[0]}
                     value={formData.dob}
                     onChange={(e) =>
                       setFormData({ ...formData, dob: e.target.value })
@@ -566,7 +673,11 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
                     Calculated Age
                   </label>
                   <div className="mt-1.5 flex h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-700">
-                    {formData.dob ? `${calculatedAge} years` : "—"}
+                    {formData.dob
+                      ? calculatedAge === 0
+                        ? "< 1 year (Infant)"
+                        : `${calculatedAge} year${calculatedAge === 1 ? "" : "s"}`
+                      : "—"}
                   </div>
                 </div>
               </div>
@@ -613,7 +724,7 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
                         phoneVerified: false,
                       })
                     }
-                    placeholder="+1 (555) 000-0000"
+                    placeholder="e.g. +91 98765 43210 or 9876543210"
                     className="flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm outline-none focus:border-slate-400"
                   />
                   {!formData.phoneVerified && (
@@ -644,7 +755,7 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
                     onChange={(e) =>
                       setFormData({ ...formData, sharedPhone: e.target.value })
                     }
-                    placeholder="+1 (555) 999-9999"
+                    placeholder="e.g. +91 98765 43211 or 9876543211 (Optional)"
                     className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-slate-400"
                   />
                 </div>
