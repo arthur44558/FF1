@@ -143,7 +143,7 @@ export interface EncounterOut {
 export interface EncounterCreate {
   patient_id: string;
   external_encounter_identifier: string;
-  clinician_user_id: string;
+  clinician_user_id?: string;
   encounter_at: string;
 }
 

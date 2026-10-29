@@ -58,7 +58,7 @@ class PatientOut(BaseModel):
 class EncounterCreate(StrictModel):
     patient_id: UUID
     external_encounter_identifier: str = Field(min_length=1, max_length=120)
-    clinician_user_id: UUID
+    clinician_user_id: UUID | None = None
     encounter_at: datetime
 
 

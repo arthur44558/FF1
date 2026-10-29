@@ -79,7 +79,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
 
     setIsSubmitting(true);
     try {
-      await login(cleanId, password);
+      await login(cleanId, password.trim());
       onClose();
       if (onSuccess) onSuccess();
     } catch (err: any) {

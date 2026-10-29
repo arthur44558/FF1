@@ -28,8 +28,5 @@ def require_timezone(value: datetime, timezone_name: str) -> datetime:
 
 def to_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
-        raise HTTPException(
-            status_code=422,
-            detail={"code": "timezone_required", "message": "A timezone-aware datetime is required"},
-        )
+        return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)

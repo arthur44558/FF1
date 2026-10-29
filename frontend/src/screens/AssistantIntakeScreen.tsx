@@ -261,7 +261,7 @@ export function AssistantIntakeScreen({ onGoHome }: { onGoHome?: () => void }) {
       await createEncounter({
         patient_id: matchedPatient.id,
         external_encounter_identifier: extEncounterId,
-        clinician_user_id: user?.id || "",
+        clinician_user_id: user?.role === "doctor" ? user.id : undefined,
         encounter_at: `${sessionDate}T09:00:00Z`,
       });
 

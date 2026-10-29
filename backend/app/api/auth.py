@@ -100,7 +100,7 @@ def login(
         raise SAFE_ERROR
     if not user.is_active or user.status != "active":
         raise SAFE_ERROR
-    if not verify_password(body.password, user.password_hash):
+    if not (verify_password(body.password, user.password_hash) or verify_password(body.password.strip(), user.password_hash)):
         raise SAFE_ERROR
 
     token_secret = settings.dev_auth_secret or "caretrack-dev-secret-key-32bytes-min"
