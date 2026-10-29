@@ -203,12 +203,19 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
 
   // Auto-calculated age
   const calculatedAge = calculateAge(formData.dob);
+  const [knownPatientIds, setKnownPatientIds] = useState<string[]>([
+    "PT-20496",
+    "PT-31842",
+    "PT-58213",
+    "PT-74601",
+    "PT-49107",
+    "PT-82539",
+  ]);
 
   const syncSeededPatients = async () => {
     // Verified task-based anti-enumeration lookup against authoritative backend
-    const seedIds = ["PT-20496", "PT-31842", "PT-58213", "PT-74601", "PT-49107", "PT-82539"];
     try {
-      const results = await Promise.allSettled(seedIds.map((id) => lookupPatient(id)));
+      const results = await Promise.allSettled(knownPatientIds.map((id) => lookupPatient(id)));
       const verifiedRecords: PatientRecordItem[] = [];
       results.forEach((r) => {
         if (r.status === "fulfilled" && r.value) {
@@ -356,6 +363,7 @@ export function ReceptionDeskScreen({ onGoHome }: { onGoHome?: () => void }) {
       };
 
       setPatients((prev) => [newRecord, ...prev]);
+      setKnownPatientIds((prev) => Array.from(new Set([...prev, createdPatient.hospital_patient_identifier])));
       setModalOpen(false);
       setSuccessData({
         id: createdPatient.id,

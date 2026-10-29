@@ -30,7 +30,7 @@ interface DoctorFollowupItem {
   patientIdentifier: string;
   patientName: string;
   initials: string;
-  severity: "high" | "moderate" | "low";
+  severity: "high" | "moderate" | "low" | "severe" | "normal";
   mode: "online" | "in_person";
   appointmentDate: string;
   status: string;
@@ -176,7 +176,7 @@ export function DoctorDashboardScreen({ onGoHome }: { onGoHome?: () => void }) {
     }
   };
 
-  const highSeverityCount = followups.filter((f) => f.severity === "high").length;
+  const highSeverityCount = followups.filter((f) => f.severity === "severe" || f.severity === "high").length;
   const overdueCount = followups.filter((f) => f.overdue).length;
   const activeCount = followups.filter((f) => f.status === "active").length;
 
@@ -479,7 +479,7 @@ export function DoctorDashboardScreen({ onGoHome }: { onGoHome?: () => void }) {
                         <td className="px-4 py-4">
                           <span
                             className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${
-                              fo.severity === "high"
+                              fo.severity === "high" || fo.severity === "severe"
                                 ? "bg-rose-50 text-rose-700"
                                 : fo.severity === "moderate"
                                 ? "bg-amber-50 text-amber-700"

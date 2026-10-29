@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { getMe, loginWithDevToken, loginWithUniqueId } from "../api/auth";
-import { getStoredToken, registerAuthFailureHandler, setStoredToken } from "../api/client";
+import { ApiError, getStoredToken, registerAuthFailureHandler, setStoredToken } from "../api/client";
 import type { MeOut, Role } from "../types/api";
 
 interface AuthContextType {
@@ -66,8 +66,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await loginWithUniqueId(uniqueId, password);
       setStoredToken(response.access_token);
       setToken(response.access_token);
-      const meData = await getMe();
-      setUser(meData);
+      try {
+        const meData = await getMe();
+        setUser(meData);
+      } catch (meErr: any) {
+        throw new ApiError(meErr.status || 500, "Failed to load user profile", { code: "session_error" });
+      }
     } catch (err: any) {
       const msg = err.message || "Invalid Unique ID or Access Revoked";
       setError(msg);

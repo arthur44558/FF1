@@ -278,6 +278,23 @@ export function AssistantIntakeScreen({ onGoHome }: { onGoHome?: () => void }) {
         doctorRemark: doctorRemark.trim() || "No doctor's remarks provided",
         followUpRequired: isFollowupBranch && followUpRequired,
       });
+
+      if (isFollowupBranch && followUpRequired && consultationMode === "online") {
+        const newConsult: OnlineConsultRecord = {
+          id: matchedPatient.hospital_patient_identifier,
+          name: matchedPatient.display_name || matchedPatient.hospital_patient_identifier,
+          age: 40,
+          gender: "Verified Chart",
+          priority: priority.toLowerCase() as any,
+          phone: "+91 98765 43210",
+          doctor: doctorName,
+          specialty: specialty,
+          date: appointmentDate,
+          note: doctorRemark.trim() || `Intake scheduled (Encounter: ${extEncounterId})`,
+          done: false,
+        };
+        setConsultRecords((prev) => [newConsult, ...prev.filter((r) => r.id !== newConsult.id)]);
+      }
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to submit assistant intake to backend.");
     } finally {

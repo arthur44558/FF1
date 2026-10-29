@@ -83,7 +83,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
       onClose();
       if (onSuccess) onSuccess();
     } catch (err: any) {
-      setErrorMessage("Invalid Unique ID or Access Revoked");
+      if (err.status === 429) {
+        setErrorMessage(err.message || "Too many login attempts. Please wait.");
+      } else if (err.status === 0) {
+        setErrorMessage("Network error. Backend service is unreachable.");
+      } else if (err.code === "session_error") {
+        setErrorMessage("Authentication succeeded, but failed to load user profile.");
+      } else {
+        setErrorMessage("Invalid Unique ID or Access Revoked");
+      }
     } finally {
       setIsSubmitting(false);
     }

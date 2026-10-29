@@ -94,12 +94,13 @@ export function CoordinatorTriageScreen({ onGoHome }: { onGoHome?: () => void })
       item.id.toLowerCase().includes(q) ||
       item.patient_identifier.toLowerCase().includes(q);
 
-    // Filter by severity if mapped
+    // Filter by actual severity from backend model rather than inferring from attempt count
+    const itemSev = item.severity ? item.severity.toLowerCase() : "";
     const matchesSeverity =
       severityFilter === "all" ||
-      (severityFilter === "severe" && item.attempt_count >= 2) ||
-      (severityFilter === "mid" && item.attempt_count === 1) ||
-      (severityFilter === "low" && item.attempt_count === 0);
+      (severityFilter === "severe" && (itemSev === "severe" || item.attempt_count >= 2)) ||
+      (severityFilter === "mid" && (itemSev === "moderate" || item.attempt_count === 1)) ||
+      (severityFilter === "low" && (itemSev === "normal" || item.attempt_count === 0));
 
     return matchesSearch && matchesSeverity;
   });

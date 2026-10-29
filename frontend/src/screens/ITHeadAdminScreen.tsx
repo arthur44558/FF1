@@ -171,8 +171,8 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
   const [revokeTarget, setRevokeTarget] = useState<DisplayAccount | null>(null);
   const [approveTarget, setApproveTarget] = useState<RegistrationRequestOut | null>(null);
   const [reason, setReason] = useState("");
-  const [allottedId, setAllottedId] = useState("");
   const [notice, setNotice] = useState("");
+  const [approvedModalUser, setApprovedModalUser] = useState<{ name: string; systemId: string; role: string } | null>(null);
 
   const refreshData = async () => {
     try {
@@ -185,13 +185,13 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
 
       const displayAccounts: DisplayAccount[] = usersData.map((u: UserOut) => ({
         id: u.id,
-        name: u.username,
+        name: u.display_name || u.username,
         email: u.work_email || `${u.username.toLowerCase().replace(/\s+/g, ".")}@caretrack.health`,
         role: formatRoleLabel(u.role),
         systemId: u.system_identifier || `USR-${u.id.slice(0, 4).toUpperCase()}`,
-        department: u.facility_id ? "CareTrack Hospital" : "Clinical Ops",
+        department: u.department || (u.facility_id ? "CareTrack Hospital" : "Clinical Ops"),
         status: u.is_active && u.status === "active" ? "Active" : "Access Revoked",
-        initials: getInitials(u.username),
+        initials: getInitials(u.display_name || u.username),
       }));
 
       setAccounts(displayAccounts);
@@ -229,8 +229,6 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
 
   const openApproval = (request: RegistrationRequestOut) => {
     setApproveTarget(request);
-    const prefix = rolePrefix[request.requested_role] || "USR";
-    setAllottedId(`${prefix}-${Math.floor(1000 + Math.random() * 8999)}`);
   };
 
   const handleRevoke = async () => {
@@ -257,10 +255,16 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
   };
 
   const handleApprove = async () => {
-    if (!approveTarget || !allottedId.trim()) return;
+    if (!approveTarget) return;
     try {
-      await approveRegistrationRequest(approveTarget.id);
-      setNotice(`${approveTarget.full_name} is now active with ID ${allottedId.trim().toUpperCase()}`);
+      const approvedUser = await approveRegistrationRequest(approveTarget.id);
+      const actualId = approvedUser.system_identifier || approvedUser.username;
+      setNotice(`Account approved! Authoritative Generated Login ID: ${actualId}`);
+      setApprovedModalUser({
+        name: approvedUser.display_name || approveTarget.full_name,
+        systemId: actualId,
+        role: formatRoleLabel(approvedUser.role),
+      });
       setApproveTarget(null);
       setTab("accounts");
       refreshData();
@@ -820,29 +824,27 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
       {approveTarget && (
         <Modal
           eyebrow="Provisioning / New identity"
-          title="Allot system ID & approve"
+          title="Approve & Generate System ID"
           onClose={() => setApproveTarget(null)}
         >
           <p className="mt-4 text-sm leading-6 text-slate-500">
-            Assign a unique identity to{" "}
-            <strong className="text-slate-800">{approveTarget.full_name}</strong>. They
-            will be able to sign in as soon as the account is activated.
+            Activate the staff account for{" "}
+            <strong className="text-slate-800">{approveTarget.full_name}</strong>. Upon approval, the authoritative backend will allot a Unique ID with prefix{" "}
+            <strong className="font-mono text-slate-800">{rolePrefix[approveTarget.requested_role] || "USR"}-XXXX</strong>.
           </p>
-          <label className="mt-5 block text-sm font-semibold text-slate-800" htmlFor="system-id">
-            Generated Unique ID
-          </label>
-          <div className="relative mt-2">
-            <UserRound className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input
-              id="system-id"
-              value={allottedId}
-              onChange={(e) => setAllottedId(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 font-mono text-sm uppercase outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-            />
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Requested Role &amp; ID Prefix
+            </span>
+            <div className="mt-1 flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-800">
+                {formatRoleLabel(approveTarget.requested_role)} ({approveTarget.department})
+              </span>
+              <span className="font-mono text-xs font-bold text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded">
+                Prefix: {rolePrefix[approveTarget.requested_role] || "USR"}
+              </span>
+            </div>
           </div>
-          <p className="mt-2 text-xs text-slate-400">
-            Format: {rolePrefix[approveTarget.requested_role] || "USR"}-XXXX · ID can be edited before approval.
-          </p>
           <div className="mt-6 flex justify-end gap-2">
             <button
               onClick={() => setApproveTarget(null)}
@@ -851,12 +853,59 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
               Cancel
             </button>
             <button
-              disabled={!allottedId.trim()}
               onClick={handleApprove}
-              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 hover:bg-emerald-700"
+              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700"
             >
               <Check className="size-4" />
-              Approve &amp; activate
+              Approve &amp; Activate
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Confirmed Approval Dialog with Authoritative Login ID */}
+      {approvedModalUser && (
+        <Modal
+          eyebrow="Identity Provisioned"
+          title="Account Activated Successfully"
+          onClose={() => setApprovedModalUser(null)}
+        >
+          <div className="text-center py-2">
+            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 mb-3">
+              <Check className="size-6 stroke-[3]" />
+            </div>
+            <p className="text-sm text-slate-600">
+              <strong className="text-slate-900">{approvedModalUser.name}</strong> has been provisioned as{" "}
+              <strong className="text-slate-900">{approvedModalUser.role}</strong>.
+            </p>
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 text-left">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                Authoritative Generated Unique ID (For Sign-In)
+              </span>
+              <div className="mt-1.5 flex items-center justify-between">
+                <span className="font-mono text-lg font-bold text-slate-900">
+                  {approvedModalUser.systemId}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(approvedModalUser.systemId);
+                    setNotice(`Copied ID ${approvedModalUser.systemId} to clipboard.`);
+                  }}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Copy ID
+                </button>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              The staff member must use this exact Generated Unique ID and their chosen password to log in.
+            </p>
+            <button
+              onClick={() => setApprovedModalUser(null)}
+              className="mt-6 w-full rounded-xl bg-slate-900 py-2.5 text-xs font-semibold text-white hover:bg-slate-800"
+            >
+              Done &amp; Return to Directory
             </button>
           </div>
         </Modal>
