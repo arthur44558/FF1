@@ -70,7 +70,7 @@ def _followup_out(db: Session, order: FollowupOrder) -> FollowupOut:
         overdue=bool(
             order.followup_required
             and order.scheduled_at
-            and order.scheduled_at < datetime.now(timezone.utc)
+            and to_utc(order.scheduled_at) < datetime.now(timezone.utc)
             and order.status in ACTIVE_FOLLOWUP_STATES
         ),
         created_at=order.created_at,
@@ -237,14 +237,24 @@ def create_encounter(
             Patient.identity_status == "verified",
         )
     )
-    clinician = db.scalar(
-        select(User).where(
-            User.id == body.clinician_user_id,
-            User.facility_id == user.facility_id,
-            User.role == "doctor",
-            User.is_active.is_(True),
+    clinician = None
+    if body.clinician_user_id:
+        clinician = db.scalar(
+            select(User).where(
+                User.id == body.clinician_user_id,
+                User.facility_id == user.facility_id,
+                User.role == "doctor",
+                User.is_active.is_(True),
+            )
         )
-    )
+    if clinician is None:
+        clinician = db.scalar(
+            select(User).where(
+                User.facility_id == user.facility_id,
+                User.role == "doctor",
+                User.is_active.is_(True),
+            )
+        )
     if patient is None or clinician is None:
         raise HTTPException(status_code=404, detail={"code": "patient_or_clinician_not_found"})
     encounter_at = to_utc(body.encounter_at)
@@ -274,6 +284,30 @@ def create_encounter(
         summary={"patient_id": str(patient.id), "clinician_user_id": str(clinician.id)},
     )
     return encounter
+
+
+@router.get("/clinicians")
+def list_clinicians(
+    user: Annotated[User, Depends(require_permission("patient:read"))],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[dict[str, Any]]:
+    doctors = db.scalars(
+        select(User).where(
+            User.facility_id == user.facility_id,
+            User.role == "doctor",
+            User.is_active.is_(True),
+        ).order_by(User.display_name)
+    ).all()
+    return [
+        {
+            "id": str(d.id),
+            "username": d.username,
+            "display_name": d.display_name,
+            "department": d.department or "General Medicine",
+            "system_identifier": d.system_identifier,
+        }
+        for d in doctors
+    ]
 
 
 @router.get("/followups", response_model=dict[str, Any])

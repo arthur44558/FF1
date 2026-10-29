@@ -40,6 +40,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "scan:verify",
         "followup:read",
         "patient:read",
+        "patient:manage",
     },
     "followup_coordinator": {
         "followup:complete",
