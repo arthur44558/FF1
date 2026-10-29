@@ -132,7 +132,13 @@ export default async function handler(req, res) {
 
   // 4. Staff Accounts Directory
   if (url.includes("/api/v1/users") && req.method === "GET") {
-    return res.status(200).json([...DEFAULT_STAFF, ...approvedRegistrations]);
+    const approvedMap = new Map();
+    for (const u of approvedRegistrations) {
+      if (u.work_email) {
+        approvedMap.set(u.work_email.toLowerCase(), u);
+      }
+    }
+    return res.status(200).json([...DEFAULT_STAFF, ...Array.from(approvedMap.values())]);
   }
 
   // 5. Admin Registration Requests Queue
@@ -143,7 +149,11 @@ export default async function handler(req, res) {
       const target = inMemoryRegistrations.find((r) => r.id === id) || inMemoryRegistrations[0];
       const allottedId = "RCP-" + Math.floor(1000 + Math.random() * 9000);
 
-      inMemoryRegistrations = inMemoryRegistrations.filter((r) => r.id !== id);
+      // Permanently remove matching ID and matching email from pending
+      inMemoryRegistrations = inMemoryRegistrations.filter(
+        (r) => r.id !== id && r.work_email?.toLowerCase() !== target?.work_email?.toLowerCase()
+      );
+
       const newUser = {
         id: "usr-" + (target?.id || Date.now()),
         username: target?.work_email || "approved_staff",
@@ -156,6 +166,11 @@ export default async function handler(req, res) {
         is_active: true,
         created_at: new Date().toISOString(),
       };
+
+      // Filter out duplicate email from approved
+      approvedRegistrations = approvedRegistrations.filter(
+        (u) => u.work_email?.toLowerCase() !== target?.work_email?.toLowerCase()
+      );
       approvedRegistrations.push(newUser);
 
       return res.status(200).json(newUser);
@@ -168,7 +183,12 @@ export default async function handler(req, res) {
       return res.status(200).json({ status: "rejected", message: "Request rejected successfully" });
     }
 
-    return res.status(200).json(inMemoryRegistrations);
+    // Filter out any already approved users from pending queue
+    const approvedEmails = new Set(approvedRegistrations.map((u) => u.work_email?.toLowerCase()));
+    const remainingPending = inMemoryRegistrations.filter(
+      (r) => !approvedEmails.has(r.work_email?.toLowerCase())
+    );
+    return res.status(200).json(remainingPending);
   }
 
   // 6. Audit Events

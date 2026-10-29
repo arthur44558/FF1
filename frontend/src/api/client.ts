@@ -206,8 +206,17 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestOptions): T 
       { id: "usr-7", username: "auditor", display_name: "Compliance Auditor", role: "auditor", system_identifier: "AUD-001", work_email: "auditor@caretrack.health", department: "Compliance", status: "active", is_active: true },
     ];
     try {
-      const approved = JSON.parse(localStorage.getItem("caretrack_approved_users") || "[]");
-      return [...DEFAULT_STAFF, ...approved] as T;
+      const approvedRaw = JSON.parse(localStorage.getItem("caretrack_approved_users") || "[]");
+      // Deduplicate approved users by work_email (keep newest only)
+      const approvedMap = new Map();
+      for (const u of approvedRaw) {
+        if (u.work_email) {
+          approvedMap.set(u.work_email.toLowerCase(), u);
+        }
+      }
+      const uniqueApproved = Array.from(approvedMap.values());
+      localStorage.setItem("caretrack_approved_users", JSON.stringify(uniqueApproved));
+      return [...DEFAULT_STAFF, ...uniqueApproved] as T;
     } catch {
       return DEFAULT_STAFF as T;
     }
@@ -216,49 +225,68 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestOptions): T 
   // 5. Admin Registration Requests Queue
   if (normEndpoint.includes("/admin/registration-requests")) {
     try {
-      let pending = JSON.parse(localStorage.getItem("caretrack_pending_registrations") || "[]");
-      if (!Array.isArray(pending) || pending.length === 0) {
-        pending = [
-          {
-            id: "req-divyansh-01",
-            full_name: "Divyansh",
-            work_email: "div6349@gmail.com",
-            department: "Cardiology",
-            requested_role: "receptionist",
-            status: "pending",
-            certification_agreed: true,
-            created_at: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
-          }
-        ];
+      const approvedUsers = JSON.parse(localStorage.getItem("caretrack_approved_users") || "[]");
+      const approvedEmails = new Set(approvedUsers.map((u: any) => u.work_email?.toLowerCase()));
+
+      let pending = JSON.parse(localStorage.getItem("caretrack_pending_registrations") || "null");
+      // Only seed once if completely uninitialized and not already approved
+      if (pending === null) {
+        if (!approvedEmails.has("div6349@gmail.com")) {
+          pending = [
+            {
+              id: "req-divyansh-01",
+              full_name: "Divyansh",
+              work_email: "div6349@gmail.com",
+              department: "Cardiology",
+              requested_role: "receptionist",
+              status: "pending",
+              certification_agreed: true,
+              created_at: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
+            }
+          ];
+        } else {
+          pending = [];
+        }
         localStorage.setItem("caretrack_pending_registrations", JSON.stringify(pending));
       }
+
+      // Filter out any requests whose email has already been approved
+      pending = pending.filter((r: any) => !approvedEmails.has(r.work_email?.toLowerCase()));
 
       if (options.method === "POST" && normEndpoint.includes("/approve")) {
         const parts = normEndpoint.split("/");
         const reqId = parts[parts.indexOf("registration-requests") + 1];
-        const target = pending.find((r: any) => r.id === reqId) || pending[0];
-        const allottedId = "RCP-" + Math.floor(1000 + Math.random() * 9000);
+        const target = pending.find((r: any) => r.id === reqId) || {
+          id: reqId,
+          full_name: "Divyansh",
+          work_email: "div6349@gmail.com",
+          department: "Cardiology",
+          requested_role: "receptionist",
+        };
 
-        // Remove from pending
-        pending = pending.filter((r: any) => r.id !== reqId);
+        // Remove from pending permanently
+        pending = pending.filter((r: any) => r.id !== reqId && r.work_email?.toLowerCase() !== target.work_email?.toLowerCase());
         localStorage.setItem("caretrack_pending_registrations", JSON.stringify(pending));
 
-        // Add to approved users list
-        const approvedUsers = JSON.parse(localStorage.getItem("caretrack_approved_users") || "[]");
+        // Add to approved users (deduplicated)
+        const allottedId = "RCP-" + Math.floor(1000 + Math.random() * 9000);
         const newUser = {
-          id: "usr-" + (target?.id || Date.now()),
-          username: target?.work_email || "approved_staff",
-          display_name: target?.full_name || "Approved Staff",
-          role: target?.requested_role || "receptionist",
+          id: "usr-" + target.id,
+          username: target.work_email || "approved_staff",
+          display_name: target.full_name || "Approved Staff",
+          role: target.requested_role || "receptionist",
           system_identifier: allottedId,
-          work_email: target?.work_email || "",
-          department: target?.department || "Cardiology",
+          work_email: target.work_email || "",
+          department: target.department || "Cardiology",
           status: "active",
           is_active: true,
           created_at: new Date().toISOString(),
         };
-        approvedUsers.push(newUser);
-        localStorage.setItem("caretrack_approved_users", JSON.stringify(approvedUsers));
+
+        const existingApproved = JSON.parse(localStorage.getItem("caretrack_approved_users") || "[]");
+        const filteredApproved = existingApproved.filter((u: any) => u.work_email?.toLowerCase() !== target.work_email?.toLowerCase());
+        filteredApproved.push(newUser);
+        localStorage.setItem("caretrack_approved_users", JSON.stringify(filteredApproved));
 
         return newUser as T;
       }

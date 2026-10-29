@@ -187,18 +187,23 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
       const requestsData = requestsRes.status === "fulfilled" && Array.isArray(requestsRes.value) ? requestsRes.value : [];
       const auditData = auditRes.status === "fulfilled" && auditRes.value?.items ? auditRes.value.items : [];
 
-      const displayAccounts: DisplayAccount[] = usersData.map((u: UserOut) => ({
-        id: u.id,
-        name: u.display_name || u.username,
-        email: u.work_email || `${u.username.toLowerCase().replace(/\s+/g, ".")}@caretrack.health`,
-        role: formatRoleLabel(u.role),
-        systemId: u.system_identifier || `USR-${u.id.slice(0, 4).toUpperCase()}`,
-        department: u.department || (u.facility_id ? "CareTrack Hospital" : "Clinical Ops"),
-        status: u.is_active && u.status === "active" ? "Active" : "Access Revoked",
-        initials: getInitials(u.display_name || u.username),
-      }));
+      // Deduplicate accounts by work email (collapse duplicates into single latest account)
+      const accountMap = new Map<string, DisplayAccount>();
+      for (const u of (usersData as UserOut[])) {
+        const email = (u.work_email || `${u.username.toLowerCase().replace(/\s+/g, ".")}@caretrack.health`).toLowerCase();
+        accountMap.set(email, {
+          id: u.id,
+          name: u.display_name || u.username,
+          email: u.work_email || `${u.username.toLowerCase().replace(/\s+/g, ".")}@caretrack.health`,
+          role: formatRoleLabel(u.role),
+          systemId: u.system_identifier || `USR-${u.id.slice(0, 4).toUpperCase()}`,
+          department: u.department || (u.facility_id ? "CareTrack Hospital" : "Clinical Ops"),
+          status: u.is_active && u.status === "active" ? "Active" : "Access Revoked",
+          initials: getInitials(u.display_name || u.username),
+        });
+      }
 
-      setAccounts(displayAccounts);
+      setAccounts(Array.from(accountMap.values()));
       setRequests(requestsData);
       setLogs(auditData);
     } catch (err: any) {
@@ -260,8 +265,12 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
 
   const handleApprove = async () => {
     if (!approveTarget) return;
+    const targetId = approveTarget.id;
+    const targetEmail = approveTarget.work_email?.toLowerCase();
     try {
-      const approvedUser = await approveRegistrationRequest(approveTarget.id);
+      // Optimistically remove from request queue immediately so button cannot be clicked again
+      setRequests((prev) => prev.filter((r) => r.id !== targetId && r.work_email?.toLowerCase() !== targetEmail));
+      const approvedUser = await approveRegistrationRequest(targetId);
       const actualId = approvedUser.system_identifier || approvedUser.username;
       setNotice(`Account approved! Authoritative Generated Login ID: ${actualId}`);
       setApprovedModalUser({
@@ -280,6 +289,7 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
   const handleReject = async (request: RegistrationRequestOut) => {
     const rejectReason = prompt("Reason for rejection:") || "Administrative decision";
     try {
+      setRequests((prev) => prev.filter((r) => r.id !== request.id));
       await rejectRegistrationRequest(request.id, rejectReason);
       setNotice(`Request from ${request.full_name} rejected`);
       refreshData();
