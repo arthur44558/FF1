@@ -4,7 +4,8 @@ export type Role =
   | "followup_coordinator"
   | "clinic_supervisor"
   | "system_admin"
-  | "auditor";
+  | "auditor"
+  | "receptionist";
 
 export type Severity = "normal" | "moderate" | "severe";
 
@@ -27,6 +28,42 @@ export interface ApiErrorResponse {
   detail: string | ApiErrorDetail;
 }
 
+export interface LoginRequest {
+  unique_id: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  role: Role;
+  system_identifier: string;
+  display_name: string;
+}
+
+export interface RegistrationRequestIn {
+  full_name: string;
+  work_email: string;
+  department: string;
+  requested_role: string;
+  password: string;
+  certification_agreed: boolean;
+}
+
+export interface RegistrationRequestOut {
+  id: string;
+  facility_id: string;
+  full_name: string;
+  work_email: string;
+  department: string;
+  requested_role: string;
+  certification_agreed: boolean;
+  status: string;
+  created_at: string;
+  reviewed_at?: string | null;
+}
+
 export interface DevTokenRequest {
   username: string;
 }
@@ -45,6 +82,9 @@ export interface MeOut {
   role: Role;
   permissions: string[];
   environment: string;
+  system_identifier?: string | null;
+  work_email?: string | null;
+  status?: string;
 }
 
 export interface UserOut {
@@ -56,6 +96,9 @@ export interface UserOut {
   department: string | null;
   is_active: boolean;
   external_subject: string | null;
+  system_identifier?: string | null;
+  work_email?: string | null;
+  status?: string;
 }
 
 export interface UserCreate {

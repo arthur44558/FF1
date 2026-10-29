@@ -17,6 +17,7 @@ class Role(StrEnum):
     clinic_supervisor = "clinic_supervisor"
     system_admin = "system_admin"
     auditor = "auditor"
+    receptionist = "receptionist"
 
 
 class Severity(StrEnum):
@@ -96,6 +97,53 @@ class UserOut(BaseModel):
     department: str | None
     is_active: bool
     external_subject: str | None
+    system_identifier: str | None = None
+    work_email: str | None = None
+    status: str = "active"
+
+
+class LoginRequest(StrictModel):
+    unique_id: str = Field(min_length=2, max_length=64)
+    password: str = Field(min_length=1, max_length=255)
+
+
+class RegistrationRequestIn(StrictModel):
+    full_name: str = Field(min_length=2, max_length=160)
+    work_email: str = Field(min_length=5, max_length=255)
+    department: str = Field(min_length=1, max_length=120)
+    requested_role: str = Field(min_length=2, max_length=40)
+    password: str = Field(min_length=8, max_length=128)
+    certification_agreed: bool = Field(...)
+
+    @field_validator("requested_role")
+    @classmethod
+    def validate_requested_role(cls, v: str) -> str:
+        allowed = {"doctor", "assistant_doctor", "staff_head", "staff", "receptionist"}
+        if v.lower() not in allowed:
+            raise ValueError(f"Requested role must be one of {allowed}")
+        return v.lower()
+
+
+class RegistrationRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    facility_id: UUID
+    full_name: str
+    work_email: str
+    department: str
+    requested_role: str
+    certification_agreed: bool
+    status: str
+    created_at: datetime
+    reviewed_at: datetime | None = None
+
+
+class RegistrationApprovalIn(StrictModel):
+    assigned_facility_id: UUID | None = None
+
+
+class RegistrationRejectionIn(StrictModel):
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class DevTokenRequest(StrictModel):
@@ -110,6 +158,9 @@ class MeOut(BaseModel):
     role: str
     permissions: list[str]
     environment: str
+    system_identifier: str | None = None
+    work_email: str | None = None
+    status: str = "active"
 
 
 class ScanOut(BaseModel):

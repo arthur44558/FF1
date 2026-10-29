@@ -7,45 +7,42 @@ import HeroSection from "./sections/HeroSection";
 import ProductSections from "./sections/ProductSections";
 import WorkflowSection from "./sections/WorkflowSection";
 import AboutFooter from "./sections/AboutFooter";
-import { AppHeader, type ActiveTab } from "./components/layout/AppHeader";
 import { LoginModal } from "./components/auth/LoginModal";
-import { DashboardScreen } from "./screens/DashboardScreen";
-import { ScanIntakeScreen } from "./screens/ScanIntakeScreen";
-import { FollowupsScreen } from "./screens/FollowupsScreen";
-import { RemindersScreen } from "./screens/RemindersScreen";
-import { PatientsScreen } from "./screens/PatientsScreen";
-import { PoliciesScreen } from "./screens/PoliciesScreen";
-import { UsersScreen } from "./screens/UsersScreen";
+
+// Role-specific screens integrated from source ZIPs
+import { DoctorDashboardScreen } from "./screens/DoctorDashboardScreen";
+import { AssistantIntakeScreen } from "./screens/AssistantIntakeScreen";
+import { ReceptionDeskScreen } from "./screens/ReceptionDeskScreen";
+import { CoordinatorTriageScreen } from "./screens/CoordinatorTriageScreen";
+import { StaffHeadDashboardScreen } from "./screens/StaffHeadDashboardScreen";
+import { ITHeadAdminScreen } from "./screens/ITHeadAdminScreen";
+import { AuditorScreen } from "./screens/AuditorScreen";
+
 import { ArrowRight, LayoutDashboard } from "lucide-react";
 
 function CareTrackMain() {
   const { user } = useAuth();
 
-  // Mode: "landing" (marketing/public) or "app" (authenticated clinical workflow)
+  // Mode: "landing" (marketing/public) or "app" (authenticated clinical role workspace)
   const [viewMode, setViewMode] = useState<"landing" | "app">(() => {
-    return localStorage.getItem("caretrack_view_mode") === "landing" ? "landing" : "app";
+    return localStorage.getItem("caretrack_stay_on_landing") === "true"
+      ? "landing"
+      : "app";
   });
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
-  const [tabParams, setTabParams] = useState<any>({});
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
-  // If user logs in while on landing, switch to app mode unless user explicitly selected landing
+  // If user logs in while on landing, automatically switch to role dashboard
   useEffect(() => {
-    if (user && viewMode === "landing" && !localStorage.getItem("caretrack_stay_on_landing")) {
+    if (user && !localStorage.getItem("caretrack_stay_on_landing")) {
       setViewMode("app");
     }
-  }, [user, viewMode]);
-
-  const handleNavigate = (tab: ActiveTab, params?: any) => {
-    setActiveTab(tab);
-    setTabParams(params || {});
-    setViewMode("app");
-  };
+  }, [user]);
 
   const handleOpenAuth = () => {
     if (user) {
+      localStorage.removeItem("caretrack_stay_on_landing");
       setViewMode("app");
     } else {
       setLoginModalOpen(true);
@@ -57,10 +54,39 @@ function CareTrackMain() {
     setViewMode("landing");
   };
 
+  const handleReturnToWorkspace = () => {
+    localStorage.removeItem("caretrack_stay_on_landing");
+    setViewMode("app");
+  };
+
+  // Authoritative Role Dispatcher: Strictly routes according to user.role from GET /api/v1/me
+  const renderRoleWorkspace = () => {
+    if (!user) return null;
+
+    switch (user.role) {
+      case "doctor":
+        return <DoctorDashboardScreen onGoHome={handleGoHome} />;
+      case "assistant_verifier":
+        return <AssistantIntakeScreen onGoHome={handleGoHome} />;
+      case "receptionist":
+        return <ReceptionDeskScreen onGoHome={handleGoHome} />;
+      case "followup_coordinator":
+        return <CoordinatorTriageScreen onGoHome={handleGoHome} />;
+      case "clinic_supervisor":
+        return <StaffHeadDashboardScreen onGoHome={handleGoHome} />;
+      case "system_admin":
+        return <ITHeadAdminScreen onGoHome={handleGoHome} />;
+      case "auditor":
+        return <AuditorScreen onGoHome={handleGoHome} />;
+      default:
+        return <DoctorDashboardScreen onGoHome={handleGoHome} />;
+    }
+  };
+
   return (
     <>
       {viewMode === "landing" || !user ? (
-        // Public Marketing Landing Page
+        // Public Marketing Landing Page (caretrack.zip)
         <div className="min-h-screen bg-[#f7faff]">
           <SiteHeader
             onFeedback={() => setFeedbackOpen(true)}
@@ -76,74 +102,34 @@ function CareTrackMain() {
               onGetStarted={handleOpenAuth}
             />
           </main>
-          <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+          <FeedbackDialog
+            open={feedbackOpen}
+            onClose={() => setFeedbackOpen(false)}
+          />
 
           {/* Quick workspace jump pill if authenticated */}
           {user && (
             <div className="fixed bottom-5 right-5 z-40 animate-fade-in">
               <button
                 type="button"
-                onClick={() => {
-                  localStorage.removeItem("caretrack_stay_on_landing");
-                  setViewMode("app");
-                }}
+                onClick={handleReturnToWorkspace}
                 className="flex items-center gap-2 rounded-full bg-[#0c4b80] px-5 py-3 text-xs font-bold text-white shadow-xl hover:bg-[#08355c] transition"
               >
                 <LayoutDashboard className="size-4" />
-                <span>Return to Clinical Workspace ({user.username})</span>
+                <span>
+                  Return to Workspace ({user.system_identifier || user.username})
+                </span>
                 <ArrowRight className="size-3.5" />
               </button>
             </div>
           )}
         </div>
       ) : (
-        // Authenticated Clinical Workspace
-        <div className="min-h-screen bg-[#f4f7fb] text-[#17212b]">
-          <AppHeader
-            activeTab={activeTab}
-            onTabChange={(tab) => {
-              setActiveTab(tab);
-              setTabParams({});
-            }}
-            onGoHome={handleGoHome}
-          />
-
-          <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-            {activeTab === "dashboard" && (
-              <DashboardScreen onNavigate={handleNavigate} />
-            )}
-
-            {activeTab === "scans" && (
-              <ScanIntakeScreen
-                initialScanId={tabParams?.scanId}
-                onNavigateToFollowup={(foId) => handleNavigate("followups", { selectedId: foId })}
-              />
-            )}
-
-            {activeTab === "followups" && (
-              <FollowupsScreen
-                initialSelectedId={tabParams?.selectedId}
-                initialOverdue={tabParams?.overdue}
-              />
-            )}
-
-            {activeTab === "reminders" && (
-              <RemindersScreen
-                initialJobId={tabParams?.selectedJobId}
-                initialStatus={tabParams?.status}
-              />
-            )}
-
-            {activeTab === "patients" && <PatientsScreen />}
-
-            {activeTab === "policies" && <PoliciesScreen />}
-
-            {activeTab === "users" && <UsersScreen />}
-          </main>
-        </div>
+        // Authoritative Role Dashboard (doctor, assistant, receptionist, triage, staff head, it-head, auditor)
+        renderRoleWorkspace()
       )}
 
-      {/* Login Modal */}
+      {/* Login / Registration Modal (login page1.zip) */}
       <LoginModal
         open={loginModalOpen}
         onClose={() => setLoginModalOpen(false)}

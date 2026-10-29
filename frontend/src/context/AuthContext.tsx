@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { getMe, loginWithDevToken } from "../api/auth";
+import { getMe, loginWithDevToken, loginWithUniqueId } from "../api/auth";
 import { getStoredToken, registerAuthFailureHandler, setStoredToken } from "../api/client";
 import type { MeOut, Role } from "../types/api";
 
@@ -8,7 +8,8 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   error: string | null;
-  login: (username: string) => Promise<void>;
+  login: (uniqueId: string, password: string) => Promise<void>;
+  devLogin: (username: string) => Promise<void>;
   logout: () => void;
   refreshMe: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
@@ -58,7 +59,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token, refreshMe, logout]);
 
-  const login = async (username: string) => {
+  const login = async (uniqueId: string, password: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await loginWithUniqueId(uniqueId, password);
+      setStoredToken(response.access_token);
+      setToken(response.access_token);
+      const meData = await getMe();
+      setUser(meData);
+    } catch (err: any) {
+      const msg = err.message || "Invalid Unique ID or Access Revoked";
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const devLogin = async (username: string) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -94,6 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         error,
         login,
+        devLogin,
         logout,
         refreshMe,
         hasPermission,

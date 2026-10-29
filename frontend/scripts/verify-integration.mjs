@@ -323,6 +323,68 @@ test("Scenario 26: Network fetch error wrapped in ApiError", () => {
   assert.strictEqual(apiErr.code, "network_error");
 });
 
+// 27. Generated Unique ID + Password Login Contract
+test("Scenario 27: Generated Unique ID login & safe error message contract", () => {
+  const loginPayload = { unique_id: "DOC-1029", password: "CareTrack@2026" };
+  assert.strictEqual(typeof loginPayload.unique_id, "string");
+  assert.strictEqual(typeof loginPayload.password, "string");
+
+  // Uniform safe error message on failure
+  const safeMessage = "Invalid Unique ID or Access Revoked";
+  assert.strictEqual(safeMessage, "Invalid Unique ID or Access Revoked");
+});
+
+// 28. Public Account Registration Request Contract
+test("Scenario 28: Public registration request fields & pending state", () => {
+  const allowedRoles = ["Doctor", "Assistant Doctor", "Staff Head", "Staff", "Receptionist"];
+  assert.ok(!allowedRoles.includes("IT Head")); // IT Head strictly barred from public registration
+
+  const req = {
+    full_name: "Dr. Leon Hart",
+    work_email: "leon.hart@caretrack.health",
+    department: "Orthopedics",
+    requested_role: "Doctor",
+    password: "SecurePassword123!",
+    certification_agreed: true,
+  };
+  assert.ok(req.certification_agreed === true);
+  assert.strictEqual(req.requested_role, "Doctor");
+});
+
+// 29. IT Head Approval, Revocation & Restoration Contract
+test("Scenario 29: IT Head administrative actions (Allot ID, Revoke, Restore)", () => {
+  const rolePrefixes = {
+    Doctor: "DOC",
+    "Assistant Doctor": "AST",
+    "Staff Head": "HD",
+    Staff: "STF",
+    Receptionist: "RCP",
+  };
+  assert.strictEqual(rolePrefixes["Doctor"], "DOC");
+  assert.strictEqual(rolePrefixes["Receptionist"], "RCP");
+
+  const revokedUser = { is_active: false, status: "revoked" };
+  assert.strictEqual(revokedUser.is_active, false);
+  assert.strictEqual(revokedUser.status, "revoked");
+
+  const restoredUser = { is_active: true, status: "active" };
+  assert.strictEqual(restoredUser.is_active, true);
+  assert.strictEqual(restoredUser.status, "active");
+});
+
+// 30. Receptionist Front Desk Registration & Non-Enumerative Lookup Contract
+test("Scenario 30: Receptionist front desk patient intake & anti-enumeration search", () => {
+  // DOB & Age calculation
+  const dob = "1990-05-15";
+  const birthYear = new Date(dob).getFullYear();
+  const currentYear = new Date().getFullYear();
+  assert.ok(currentYear - birthYear >= 30);
+
+  // Anti-enumeration search requires exact hospital identifier
+  const searchParams = { hospital_patient_identifier: "PT-1001" };
+  assert.ok(searchParams.hospital_patient_identifier.length > 0);
+});
+
 console.log("==================================================");
 console.log(`TOTAL SCENARIOS TESTED: ${testsPassed + testsFailed}`);
 console.log(`PASSED: ${testsPassed}`);

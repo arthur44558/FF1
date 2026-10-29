@@ -54,7 +54,7 @@ class User(Base, TimestampMixin):
         UniqueConstraint("external_subject", name="uq_users_external_subject"),
         CheckConstraint(
             "role IN ('doctor','assistant_verifier','followup_coordinator',"
-            "'clinic_supervisor','system_admin','auditor')",
+            "'clinic_supervisor','system_admin','auditor','receptionist')",
             name="ck_users_role",
         ),
     )
@@ -70,6 +70,29 @@ class User(Base, TimestampMixin):
     department: Mapped[str | None] = mapped_column(String(120))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    system_identifier: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    work_email: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+
+
+class RegistrationRequest(Base, TimestampMixin):
+    __tablename__ = "registration_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    facility_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("facilities.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    full_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    work_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    department: Mapped[str] = mapped_column(String(120), nullable=False)
+    requested_role: Mapped[str] = mapped_column(String(40), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    certification_agreed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class Patient(Base, TimestampMixin):

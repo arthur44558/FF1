@@ -17,10 +17,12 @@ def record_audit(
     *,
     reason: str | None = None,
     summary: dict[str, Any] | None = None,
+    facility_id: UUID | None = None,
 ) -> None:
+    fid = actor.facility_id if actor else (facility_id or getattr(request.state, "facility_id", None))
     db.add(
         AuditEvent(
-            facility_id=actor.facility_id if actor else request.state.facility_id,
+            facility_id=fid,
             actor_type="user" if actor else "service",
             actor_user_id=actor.id if actor else None,
             action=action,

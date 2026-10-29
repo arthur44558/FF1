@@ -51,7 +51,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
   const handleSwitchAccount = async (username: string) => {
     setRoleMenuOpen(false);
-    await login(username);
+    await login(username, "CareTrack@2026");
   };
 
   const navItems: Array<{
