@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   CalendarCheck2,
   CalendarDays,
@@ -18,6 +18,8 @@ import {
   cancelFollowup,
 } from "../api/followups";
 import type { FollowupOut } from "../types/api";
+import { useLiveRefresh } from "../hooks/useLiveRefresh";
+import { LiveStatusPill } from "../components/common/LiveStatusPill";
 
 type Section = "overview" | "logs" | "calendar" | "approvals";
 type AppointmentMode = "all" | "online" | "in_person";
@@ -117,9 +119,12 @@ export function DoctorDashboardScreen({ onGoHome }: { onGoHome?: () => void }) {
     }
   };
 
-  useEffect(() => {
-    fetchFollowups();
-  }, []);
+  const { formattedLastUpdated, isRefreshing, refreshNow, refreshError } =
+    useLiveRefresh({
+      onRefresh: fetchFollowups,
+      intervalMs: 12000,
+      enabled: Boolean(user),
+    });
 
   const filteredFollowups = useMemo(() => {
     return followups.filter((f) => {
@@ -163,7 +168,7 @@ export function DoctorDashboardScreen({ onGoHome }: { onGoHome?: () => void }) {
       setActionType(null);
       setActionDate("");
       setActionReason("");
-      fetchFollowups();
+      await refreshNow();
     } catch (err: any) {
       alert("Action failed: " + (err.message || "Unknown error"));
     } finally {
@@ -200,6 +205,12 @@ export function DoctorDashboardScreen({ onGoHome }: { onGoHome?: () => void }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <LiveStatusPill
+              lastUpdatedText={formattedLastUpdated}
+              isRefreshing={isRefreshing}
+              onRefresh={refreshNow}
+              error={refreshError}
+            />
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700">
               <span className="font-mono font-bold text-slate-900">
                 {user?.system_identifier || "DOC-1029"}

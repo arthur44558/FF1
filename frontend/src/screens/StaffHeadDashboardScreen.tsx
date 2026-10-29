@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -20,6 +20,8 @@ import type {
   PolicyOut,
   ReminderOut,
 } from "../types/api";
+import { useLiveRefresh } from "../hooks/useLiveRefresh";
+import { LiveStatusPill } from "../components/common/LiveStatusPill";
 
 type WarningCategory =
   | "Missed clinical task"
@@ -75,9 +77,12 @@ export function StaffHeadDashboardScreen({ onGoHome }: { onGoHome?: () => void }
     }
   };
 
-  useEffect(() => {
-    refreshDashboard();
-  }, []);
+  const { formattedLastUpdated, isRefreshing, refreshNow, refreshError } =
+    useLiveRefresh({
+      onRefresh: refreshDashboard,
+      intervalMs: 12000,
+      enabled: Boolean(user),
+    });
 
   const handleIssueWarning = (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +144,12 @@ export function StaffHeadDashboardScreen({ onGoHome }: { onGoHome?: () => void }
           </div>
 
           <div className="flex items-center gap-3">
+            <LiveStatusPill
+              lastUpdatedText={formattedLastUpdated}
+              isRefreshing={isRefreshing}
+              onRefresh={refreshNow}
+              error={refreshError}
+            />
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700">
               <span className="font-mono font-bold text-slate-900">
                 {user?.system_identifier || "HD-101"}

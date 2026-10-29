@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -30,6 +30,8 @@ import type {
   RegistrationRequestOut,
   UserOut,
 } from "../types/api";
+import { useLiveRefresh } from "../hooks/useLiveRefresh";
+import { LiveStatusPill } from "../components/common/LiveStatusPill";
 
 type AccountStatus = "Active" | "Access Revoked";
 
@@ -202,9 +204,12 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
     }
   };
 
-  useEffect(() => {
-    refreshData();
-  }, []);
+  const { formattedLastUpdated, isRefreshing, refreshNow, refreshError } =
+    useLiveRefresh({
+      onRefresh: refreshData,
+      intervalMs: 12000,
+      enabled: Boolean(user),
+    });
 
   const filteredAccounts = useMemo(() => {
     return accounts.filter((account) => {
@@ -367,6 +372,12 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <LiveStatusPill
+              lastUpdatedText={formattedLastUpdated}
+              isRefreshing={isRefreshing}
+              onRefresh={refreshNow}
+              error={refreshError}
+            />
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">
               <span className="font-mono font-bold text-slate-900">
                 {user?.system_identifier || "ITH-001"}

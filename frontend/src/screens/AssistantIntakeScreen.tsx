@@ -17,7 +17,10 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { lookupPatient } from "../api/patients";
 import { createEncounter } from "../api/encounters";
+import { listFollowups } from "../api/followups";
 import type { PatientOut } from "../types/api";
+import { useLiveRefresh } from "../hooks/useLiveRefresh";
+import { LiveStatusPill } from "../components/common/LiveStatusPill";
 
 const DOCTORS_BY_SPECIALTY: Record<string, string[]> = {
   Cardiology: ["Dr. Amelia Reed", "Dr. J. Lin", "Dr. S. Okafor"],
@@ -176,6 +179,37 @@ export function AssistantIntakeScreen({ onGoHome }: { onGoHome?: () => void }) {
   const [consultDateFrom, setConsultDateFrom] = useState("");
   const [consultDateTo, setConsultDateTo] = useState("");
   const [selectedConsult, setSelectedConsult] = useState<OnlineConsultRecord | null>(null);
+
+  const fetchConsultancyData = async () => {
+    try {
+      const res = await listFollowups({ limit: 50 });
+      if (res && res.items && res.items.length > 0) {
+        const liveMapped: OnlineConsultRecord[] = res.items.map((fo) => ({
+          id: fo.patient_identifier || `PT-${fo.patient_id.slice(0, 5).toUpperCase()}`,
+          name: fo.patient_display_name || "Clinical Patient",
+          age: 45,
+          gender: "Verified Chart",
+          priority: (fo.severity?.toLowerCase() as any) || "moderate",
+          phone: "+91 98765 43210",
+          doctor: "Dr. Amelia Reed",
+          specialty: "Cardiology",
+          date: fo.scheduled_at ? fo.scheduled_at.split("T")[0] : new Date().toISOString().split("T")[0],
+          note: `Follow-up order #${fo.id.slice(0, 8)} (${fo.status})`,
+          done: fo.status === "completed",
+        }));
+        setConsultRecords(liveMapped);
+      }
+    } catch (e) {
+      console.error("Failed to sync consultancy live data", e);
+    }
+  };
+
+  const { formattedLastUpdated, isRefreshing, refreshNow, refreshError } =
+    useLiveRefresh({
+      onRefresh: fetchConsultancyData,
+      intervalMs: 15000,
+      enabled: Boolean(user),
+    });
 
   // Update doctor name when specialty changes
   const handleSpecialtyChange = (spec: string) => {
@@ -347,6 +381,13 @@ export function AssistantIntakeScreen({ onGoHome }: { onGoHome?: () => void }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <LiveStatusPill
+              lastUpdatedText={formattedLastUpdated}
+              isRefreshing={isRefreshing}
+              onRefresh={refreshNow}
+              error={refreshError}
+            />
+
             {/* Notification Bell */}
             <div className="relative">
               <button

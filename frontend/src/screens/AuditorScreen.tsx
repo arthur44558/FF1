@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   LogOut,
   RefreshCw,
@@ -8,6 +8,8 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { listAuditEvents } from "../api/policies";
 import type { AuditEventOut } from "../types/api";
+import { useLiveRefresh } from "../hooks/useLiveRefresh";
+import { LiveStatusPill } from "../components/common/LiveStatusPill";
 
 export function AuditorScreen({ onGoHome }: { onGoHome?: () => void }) {
   const { user, logout } = useAuth();
@@ -29,9 +31,12 @@ export function AuditorScreen({ onGoHome }: { onGoHome?: () => void }) {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const { formattedLastUpdated, isRefreshing, refreshNow, refreshError } =
+    useLiveRefresh({
+      onRefresh: loadData,
+      intervalMs: 12000,
+      enabled: Boolean(user),
+    });
 
   const filteredLogs = logs.filter((log) => {
     const q = search.toLowerCase();
@@ -74,6 +79,12 @@ export function AuditorScreen({ onGoHome }: { onGoHome?: () => void }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <LiveStatusPill
+              lastUpdatedText={formattedLastUpdated}
+              isRefreshing={isRefreshing}
+              onRefresh={refreshNow}
+              error={refreshError}
+            />
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700">
               <span className="font-mono font-bold text-slate-900">
                 {user?.system_identifier || "AUD-001"}

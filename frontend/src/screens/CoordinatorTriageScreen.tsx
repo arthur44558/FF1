@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   CalendarDays,
   ChevronLeft,
@@ -13,6 +13,8 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { getReminderQueue, recordCallOutcome } from "../api/reminders";
 import type { ReminderOut } from "../types/api";
+import { useLiveRefresh } from "../hooks/useLiveRefresh";
+import { LiveStatusPill } from "../components/common/LiveStatusPill";
 
 type SeverityFilter = "all" | "severe" | "mid" | "low";
 
@@ -78,9 +80,12 @@ export function CoordinatorTriageScreen({ onGoHome }: { onGoHome?: () => void })
     }
   };
 
-  useEffect(() => {
-    fetchQueue();
-  }, []);
+  const { formattedLastUpdated, isRefreshing, refreshNow, refreshError } =
+    useLiveRefresh({
+      onRefresh: fetchQueue,
+      intervalMs: 12000,
+      enabled: Boolean(user),
+    });
 
   const filteredQueue = queue.filter((item) => {
     const q = search.toLowerCase();
@@ -142,7 +147,7 @@ export function CoordinatorTriageScreen({ onGoHome }: { onGoHome?: () => void })
         `Contact attempt recorded for task ${selectedJob.id.slice(0, 8)}.`
       );
       setCallModalOpen(false);
-      fetchQueue();
+      await refreshNow();
     } catch (err: any) {
       alert("Failed to record call outcome: " + (err.message || "Unknown error"));
     } finally {
@@ -175,6 +180,12 @@ export function CoordinatorTriageScreen({ onGoHome }: { onGoHome?: () => void })
           </div>
 
           <div className="flex items-center gap-3">
+            <LiveStatusPill
+              lastUpdatedText={formattedLastUpdated}
+              isRefreshing={isRefreshing}
+              onRefresh={refreshNow}
+              error={refreshError}
+            />
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700">
               <span className="font-mono font-bold text-slate-900">
                 {user?.system_identifier || "STF-4410"}
