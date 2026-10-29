@@ -2,7 +2,7 @@
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE TABLE facilities (
+CREATE TABLE IF NOT EXISTS facilities (
 	id UUID NOT NULL, 
 	name VARCHAR(160) NOT NULL, 
 	timezone VARCHAR(64) NOT NULL, 
@@ -12,7 +12,7 @@ CREATE TABLE facilities (
 	PRIMARY KEY (id)
 );
 
-CREATE TABLE idempotency_records (
+CREATE TABLE IF NOT EXISTS idempotency_records (
 	id UUID NOT NULL, 
 	scope VARCHAR(180) NOT NULL, 
 	key VARCHAR(180) NOT NULL, 
@@ -25,7 +25,7 @@ CREATE TABLE idempotency_records (
 	CONSTRAINT uq_idempotency_scope_key UNIQUE (scope, key)
 );
 
-CREATE TABLE provider_webhook_events (
+CREATE TABLE IF NOT EXISTS provider_webhook_events (
 	id UUID NOT NULL, 
 	provider_event_id VARCHAR(255) NOT NULL, 
 	provider_message_id VARCHAR(255) NOT NULL, 
@@ -35,7 +35,7 @@ CREATE TABLE provider_webhook_events (
 	UNIQUE (provider_event_id)
 );
 
-CREATE TABLE patients (
+CREATE TABLE IF NOT EXISTS patients (
 	id UUID NOT NULL, 
 	facility_id UUID NOT NULL, 
 	hospital_patient_identifier VARCHAR(120) NOT NULL, 
@@ -49,7 +49,7 @@ CREATE TABLE patients (
 	FOREIGN KEY(facility_id) REFERENCES facilities (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
 	id UUID NOT NULL, 
 	facility_id UUID NOT NULL, 
 	external_subject VARCHAR(255), 
@@ -73,7 +73,7 @@ CREATE TABLE users (
 	UNIQUE (external_subject)
 );
 
-CREATE TABLE audit_events (
+CREATE TABLE IF NOT EXISTS audit_events (
 	id UUID NOT NULL, 
 	facility_id UUID NOT NULL, 
 	occurred_at TIMESTAMP WITH TIME ZONE NOT NULL, 
@@ -90,7 +90,7 @@ CREATE TABLE audit_events (
 	FOREIGN KEY(actor_user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE encounters (
+CREATE TABLE IF NOT EXISTS encounters (
 	id UUID NOT NULL, 
 	facility_id UUID NOT NULL, 
 	patient_id UUID NOT NULL, 
@@ -105,7 +105,7 @@ CREATE TABLE encounters (
 	FOREIGN KEY(clinician_user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE patient_contacts (
+CREATE TABLE IF NOT EXISTS patient_contacts (
 	id UUID NOT NULL, 
 	patient_id UUID NOT NULL, 
 	channel VARCHAR(24) NOT NULL, 
@@ -122,7 +122,7 @@ CREATE TABLE patient_contacts (
 	FOREIGN KEY(patient_id) REFERENCES patients (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE policy_versions (
+CREATE TABLE IF NOT EXISTS policy_versions (
 	id UUID NOT NULL, 
 	facility_id UUID NOT NULL, 
 	name VARCHAR(120) NOT NULL, 
@@ -142,7 +142,7 @@ CREATE TABLE policy_versions (
 	FOREIGN KEY(approved_by_user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE registration_requests (
+CREATE TABLE IF NOT EXISTS registration_requests (
 	id UUID NOT NULL, 
 	facility_id UUID NOT NULL, 
 	full_name VARCHAR(160) NOT NULL, 
@@ -162,7 +162,7 @@ CREATE TABLE registration_requests (
 	FOREIGN KEY(reviewed_by_user_id) REFERENCES users (id)
 );
 
-CREATE TABLE communication_preferences (
+CREATE TABLE IF NOT EXISTS communication_preferences (
 	id UUID NOT NULL, 
 	patient_contact_id UUID NOT NULL, 
 	purpose VARCHAR(80) NOT NULL, 
@@ -183,7 +183,7 @@ CREATE TABLE communication_preferences (
 	FOREIGN KEY(captured_by_user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE scan_documents (
+CREATE TABLE IF NOT EXISTS scan_documents (
 	id UUID NOT NULL, 
 	facility_id UUID NOT NULL, 
 	form_identifier VARCHAR(120) NOT NULL, 
@@ -215,7 +215,7 @@ CREATE TABLE scan_documents (
 	FOREIGN KEY(reviewed_by_user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE clinical_decisions (
+CREATE TABLE IF NOT EXISTS clinical_decisions (
 	id UUID NOT NULL, 
 	scan_document_id UUID NOT NULL, 
 	revision INTEGER NOT NULL, 
@@ -233,7 +233,7 @@ CREATE TABLE clinical_decisions (
 	FOREIGN KEY(clinician_user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE followup_orders (
+CREATE TABLE IF NOT EXISTS followup_orders (
 	id UUID NOT NULL, 
 	facility_id UUID NOT NULL, 
 	patient_id UUID NOT NULL, 
@@ -274,7 +274,7 @@ CREATE TABLE followup_orders (
 	FOREIGN KEY(cancelled_by_user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE verification_events (
+CREATE TABLE IF NOT EXISTS verification_events (
 	id UUID NOT NULL, 
 	scan_document_id UUID NOT NULL, 
 	reviewer_user_id UUID NOT NULL, 
@@ -288,7 +288,7 @@ CREATE TABLE verification_events (
 	FOREIGN KEY(reviewer_user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE followup_revisions (
+CREATE TABLE IF NOT EXISTS followup_revisions (
 	id UUID NOT NULL, 
 	followup_order_id UUID NOT NULL, 
 	revision INTEGER NOT NULL, 
@@ -303,7 +303,7 @@ CREATE TABLE followup_revisions (
 	FOREIGN KEY(changed_by_user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE reminder_jobs (
+CREATE TABLE IF NOT EXISTS reminder_jobs (
 	id UUID NOT NULL, 
 	facility_id UUID NOT NULL, 
 	followup_order_id UUID NOT NULL, 
@@ -336,7 +336,7 @@ CREATE TABLE reminder_jobs (
 	FOREIGN KEY(patient_contact_id) REFERENCES patient_contacts (id) ON DELETE RESTRICT
 );
 
-CREATE TABLE communication_attempts (
+CREATE TABLE IF NOT EXISTS communication_attempts (
 	id UUID NOT NULL, 
 	reminder_job_id UUID NOT NULL, 
 	attempt_no INTEGER NOT NULL, 
@@ -387,7 +387,7 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- Insert Active Follow-up Policy
-INSERT INTO policy_versions (id, facility_id, version_number, name, description, active, created_at, updated_at)
+INSERT INTO policy_versions (id, facility_id, name, version, config, is_active, effective_from, created_at)
 VALUES
-    ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 1, 'Standard Clinical Follow-up Protocol v1', 'Automated spaced follow-up scheduling for Cardiology, Internal Medicine, and Oncology discharges', true, NOW(), NOW())
+    ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'clinic-follow-up', 1, '{"timezone": "Asia/Kolkata", "schedule_mode": "spaced", "fractions": [0.29, 0.57, 0.79, 0.86, 0.93], "actions": {"normal": ["message", "message", "message", "message", "message"], "moderate": ["message", "message", "call", "call", "call"], "severe": ["call", "call", "call", "call", "call"]}, "severe_initial_message": true}'::jsonb, true, NOW(), NOW())
 ON CONFLICT (id) DO NOTHING;

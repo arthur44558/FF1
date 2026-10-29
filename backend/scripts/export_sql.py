@@ -2,7 +2,7 @@ from sqlalchemy.schema import CreateTable
 from sqlalchemy.dialects import postgresql
 from app.db import Base
 from app import models
-import uuid
+import json
 
 lines = [
     '-- CareTrack Hospital Follow-up Full PostgreSQL Schema & Initial Data for Supabase',
@@ -11,6 +11,8 @@ lines = [
 
 for table in Base.metadata.sorted_tables:
     ddl = str(CreateTable(table).compile(dialect=postgresql.dialect())).strip()
+    # Ensure idempotent CREATE TABLE IF NOT EXISTS
+    ddl = ddl.replace('CREATE TABLE ', 'CREATE TABLE IF NOT EXISTS ', 1)
     lines.append(ddl + ';')
 
 trigger_sql = """
@@ -28,9 +30,21 @@ FOR EACH ROW EXECUTE FUNCTION prevent_audit_event_mutation();
 """
 lines.append(trigger_sql)
 
-# Add Facility
 fac_id = "00000000-0000-0000-0000-000000000001"
 pwd_hash = "pbkdf2_sha256$100000$ad4856f6deec5c02ca63946c6a71bd34$51ee7c2f4acc87d2f67ea386ebb230275eccb75527348a167df7367a3e60fd5b"
+
+policy_config = {
+    "timezone": "Asia/Kolkata",
+    "schedule_mode": "spaced",
+    "fractions": [0.29, 0.57, 0.79, 0.86, 0.93],
+    "actions": {
+        "normal": ["message", "message", "message", "message", "message"],
+        "moderate": ["message", "message", "call", "call", "call"],
+        "severe": ["call", "call", "call", "call", "call"]
+    },
+    "severe_initial_message": True
+}
+policy_config_json = json.dumps(policy_config)
 
 seed_sql = f"""
 -- Insert Facility
@@ -51,9 +65,9 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- Insert Active Follow-up Policy
-INSERT INTO policy_versions (id, facility_id, version_number, name, description, active, created_at, updated_at)
+INSERT INTO policy_versions (id, facility_id, name, version, config, is_active, effective_from, created_at)
 VALUES
-    ('00000000-0000-0000-0000-000000000002', '{fac_id}', 1, 'Standard Clinical Follow-up Protocol v1', 'Automated spaced follow-up scheduling for Cardiology, Internal Medicine, and Oncology discharges', true, NOW(), NOW())
+    ('00000000-0000-0000-0000-000000000002', '{fac_id}', 'clinic-follow-up', 1, '{policy_config_json}'::jsonb, true, NOW(), NOW())
 ON CONFLICT (id) DO NOTHING;
 """
 lines.append(seed_sql)
@@ -61,4 +75,4 @@ lines.append(seed_sql)
 with open('backend/supabase_schema.sql', 'w', encoding='utf-8') as f:
     f.write('\n\n'.join(lines))
 
-print('Wrote backend/supabase_schema.sql with schema and seed data!')
+print('Wrote idempotent backend/supabase_schema.sql!')
