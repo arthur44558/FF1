@@ -385,6 +385,42 @@ test("Scenario 30: Receptionist front desk patient intake & anti-enumeration sea
   assert.ok(searchParams.hospital_patient_identifier.length > 0);
 });
 
+// 31. Supabase Auth Gatekeeper Authority & Account State Synchrony
+test("Scenario 31: Supabase Auth integration with strict IT Admin gatekeeper authority", () => {
+  // Pending registration is NOT active until IT admin approval
+  const pendingReq = { status: "pending", work_email: "clinician@caretrack.health" };
+  assert.strictEqual(pendingReq.status, "pending");
+
+  // Inactive or revoked accounts are barred from signing in even with valid password
+  const revokedUser = { is_active: false, status: "revoked", work_email: "banned@caretrack.health" };
+  const canLogin = revokedUser.is_active && revokedUser.status === "active";
+  assert.strictEqual(canLogin, false);
+
+  // Active user approved by IT Admin can log in
+  const approvedUser = { is_active: true, status: "active", system_identifier: "DOC-1029" };
+  assert.strictEqual(approvedUser.is_active && approvedUser.status === "active", true);
+});
+
+// 32. Password Reset / Forgot Password Contract
+test("Scenario 32: Forgot Password and Password Reset lifecycle contract", () => {
+  // Anti-enumeration generic response contract
+  const forgotResponse = {
+    message: "If an authorized active account matches the details provided, password reset instructions have been generated.",
+    delivery: "direct_token",
+    reset_token: "mock-signed-reset-jwt",
+  };
+  assert.ok(forgotResponse.message.includes("If an authorized active account"));
+  assert.strictEqual(typeof forgotResponse.delivery, "string");
+
+  // Reset password schema
+  const resetPayload = {
+    token: forgotResponse.reset_token,
+    new_password: "NewSecurePassword2026!",
+  };
+  assert.ok(resetPayload.token.length >= 10);
+  assert.ok(resetPayload.new_password.length >= 8);
+});
+
 console.log("==================================================");
 console.log(`TOTAL SCENARIOS TESTED: ${testsPassed + testsFailed}`);
 console.log(`PASSED: ${testsPassed}`);

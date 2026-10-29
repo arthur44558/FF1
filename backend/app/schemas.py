@@ -107,6 +107,26 @@ class LoginRequest(StrictModel):
     password: str = Field(min_length=1, max_length=255)
 
 
+class ForgotPasswordIn(StrictModel):
+    identity: str = Field(min_length=2, max_length=255)
+
+
+class ForgotPasswordOut(BaseModel):
+    message: str
+    delivery: str
+    reset_token: str | None = None
+
+
+class ResetPasswordIn(StrictModel):
+    token: str = Field(min_length=10, max_length=1024)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ResetPasswordOut(BaseModel):
+    status: str
+    message: str
+
+
 class RegistrationRequestIn(StrictModel):
     full_name: str = Field(min_length=2, max_length=160)
     work_email: str = Field(min_length=5, max_length=255)
@@ -356,6 +376,7 @@ class SupersedeIn(StrictModel):
 
 class PolicyConfig(StrictModel):
     timezone: str = "Asia/Kolkata"
+    schedule_mode: str = "spaced"
     fractions: list[float] = Field(
         default_factory=lambda: [0.29, 0.57, 0.79, 0.86, 0.93], min_length=1, max_length=12
     )
@@ -401,12 +422,13 @@ class PolicyConfig(StrictModel):
 
     @model_validator(mode="after")
     def action_rules_match_fractions(self) -> "PolicyConfig":
-        for severity in ("normal", "moderate", "severe"):
-            choices = self.actions.get(severity)
-            if choices is None or len(choices) != len(self.fractions):
-                raise ValueError(f"actions.{severity} must match the number of fractions")
-            if any(value not in {"message", "call", "suppress"} for value in choices):
-                raise ValueError("Actions may be message, call or suppress")
+        if getattr(self, "schedule_mode", "spaced") == "fractional":
+            for severity in ("normal", "moderate", "severe"):
+                choices = self.actions.get(severity)
+                if choices is None or len(choices) != len(self.fractions):
+                    raise ValueError(f"actions.{severity} must match the number of fractions")
+                if any(value not in {"message", "call", "suppress"} for value in choices):
+                    raise ValueError("Actions may be message, call or suppress")
         return self
 
 

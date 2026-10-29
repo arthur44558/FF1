@@ -22,15 +22,29 @@ from app.db import get_db
 from app.models import Facility, RegistrationRequest, User
 from app.schemas import (
     DevTokenRequest,
+    ForgotPasswordIn,
+    ForgotPasswordOut,
     LoginRequest,
     MeOut,
     RegistrationApprovalIn,
     RegistrationRejectionIn,
     RegistrationRequestIn,
     RegistrationRequestOut,
+    ResetPasswordIn,
+    ResetPasswordOut,
     UserCreate,
     UserOut,
     UserPatch,
+)
+from app.services.supabase_auth import (
+    is_supabase_configured,
+    supabase_admin_ban_user,
+    supabase_admin_create_user,
+    supabase_admin_get_user_by_email,
+    supabase_admin_unban_user,
+    supabase_admin_update_password,
+    supabase_send_password_recovery,
+    supabase_verify_credentials,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["authentication and staff"])
@@ -83,10 +97,14 @@ def login(
     recent.append(now)
     _token_attempts[key] = recent
 
-    identifier = body.unique_id.strip().upper()
+    clean_id = body.unique_id.strip()
+    identifier = clean_id.upper()
     user = db.scalar(
         select(User).where(
-            (User.system_identifier == identifier) | (User.username == body.unique_id.strip())
+            (User.system_identifier == identifier)
+            | (User.username == clean_id)
+            | (User.username == clean_id.lower())
+            | (User.work_email == clean_id.lower())
         )
     )
 
@@ -98,9 +116,27 @@ def login(
 
     if user is None:
         raise SAFE_ERROR
+    # IT Admin gatekeeper authority: only active accounts can sign in
     if not user.is_active or user.status != "active":
         raise SAFE_ERROR
-    if not (verify_password(body.password, user.password_hash) or verify_password(body.password.strip(), user.password_hash)):
+
+    authenticated = False
+    if user.password_hash and (
+        verify_password(body.password, user.password_hash)
+        or verify_password(body.password.strip(), user.password_hash)
+    ):
+        authenticated = True
+
+    # If local hash check did not match and Supabase Auth is configured, verify against Supabase
+    if not authenticated and is_supabase_configured() and user.work_email:
+        sb_auth = supabase_verify_credentials(user.work_email, body.password)
+        if sb_auth:
+            authenticated = True
+            user.password_hash = hash_password(body.password)
+            if not user.external_subject and sb_auth.get("user", {}).get("id"):
+                user.external_subject = sb_auth["user"]["id"]
+
+    if not authenticated:
         raise SAFE_ERROR
 
     token_secret = settings.dev_auth_secret or "caretrack-dev-secret-key-32bytes-min"
@@ -185,6 +221,16 @@ def request_registration(
     db.add(req_obj)
     db.flush()
 
+    # When Supabase Auth is enabled, stage identity in Supabase and immediately ban until IT approval
+    if is_supabase_configured() and clean_email:
+        sb_user = supabase_admin_create_user(
+            email=clean_email,
+            password=body.password,
+            metadata={"full_name": body.full_name, "requested_role": body.requested_role, "status": "pending"},
+        )
+        if sb_user and sb_user.get("id"):
+            supabase_admin_ban_user(sb_user["id"])
+
     record_audit(
         db,
         request,
@@ -256,6 +302,13 @@ def approve_registration_request(
     req_obj.reviewed_by_user_id = user.id
     req_obj.reviewed_at = datetime.now(timezone.utc)
 
+    # IT Admin authorization unlocks active state in Supabase Auth
+    if is_supabase_configured() and req_obj.work_email:
+        sb_user = supabase_admin_get_user_by_email(req_obj.work_email)
+        if sb_user and sb_user.get("id"):
+            supabase_admin_unban_user(sb_user["id"])
+            new_user.external_subject = sb_user["id"]
+
     record_audit(
         db,
         request,
@@ -288,6 +341,11 @@ def reject_registration_request(
     req_obj.reviewed_by_user_id = user.id
     req_obj.reviewed_at = datetime.now(timezone.utc)
 
+    if is_supabase_configured() and req_obj.work_email:
+        sb_user = supabase_admin_get_user_by_email(req_obj.work_email)
+        if sb_user and sb_user.get("id"):
+            supabase_admin_ban_user(sb_user["id"])
+
     record_audit(
         db,
         request,
@@ -313,6 +371,8 @@ def revoke_user_access(
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": "User not found"})
     target.is_active = False
     target.status = "revoked"
+    if is_supabase_configured() and target.external_subject:
+        supabase_admin_ban_user(target.external_subject)
     record_audit(
         db,
         request,
@@ -338,6 +398,8 @@ def restore_user_access(
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": "User not found"})
     target.is_active = True
     target.status = "active"
+    if is_supabase_configured() and target.external_subject:
+        supabase_admin_unban_user(target.external_subject)
     record_audit(
         db,
         request,
@@ -348,6 +410,153 @@ def restore_user_access(
         summary={"system_identifier": target.system_identifier, "is_active": True},
     )
     return target
+
+
+@router.post("/auth/forgot-password", response_model=ForgotPasswordOut)
+def forgot_password(
+    body: ForgotPasswordIn,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> ForgotPasswordOut:
+    """Dispatches password recovery instructions.
+    Works with both Generated Unique ID (e.g. DOC-1029) and registered work email."""
+    now = datetime.now(timezone.utc)
+    key = request.client.host if request.client else "unknown"
+    recent = [item for item in _token_attempts.get(key, []) if now - item < timedelta(minutes=1)]
+    if len(recent) >= 10:
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "rate_limited", "message": "Too many requests. Please wait a moment."},
+        )
+    recent.append(now)
+    _token_attempts[key] = recent
+
+    clean_ident = body.identity.strip()
+    user = db.scalar(
+        select(User).where(
+            (User.system_identifier == clean_ident.upper())
+            | (User.username == clean_ident)
+            | (User.username == clean_ident.lower())
+            | (User.work_email == clean_ident.lower())
+        )
+    )
+
+    GENERIC_MESSAGE = (
+        "If an authorized active account matches the details provided, password reset instructions "
+        "have been generated."
+    )
+
+    if user is None or not user.is_active or user.status != "active":
+        return ForgotPasswordOut(
+            message=GENERIC_MESSAGE,
+            delivery="email" if is_supabase_configured() else "direct_token",
+            reset_token=None,
+        )
+
+    token_secret = settings.dev_auth_secret or "caretrack-dev-secret-key-32bytes-min"
+    reset_token = jwt.encode(
+        {
+            "sub": str(user.id),
+            "purpose": "password_reset",
+            "iss": "hospital-followup-auth",
+            "iat": now,
+            "exp": now + timedelta(minutes=15),
+            "jti": str(uuid4()),
+        },
+        token_secret,
+        algorithm="HS256",
+    )
+
+    delivery = "direct_token"
+    if is_supabase_configured() and user.work_email:
+        supabase_send_password_recovery(user.work_email)
+        delivery = "email"
+
+    record_audit(
+        db,
+        request,
+        user,
+        "auth.forgot_password_requested",
+        "user",
+        user.id,
+        summary={"delivery": delivery, "system_identifier": user.system_identifier},
+    )
+
+    return ForgotPasswordOut(
+        message=GENERIC_MESSAGE,
+        delivery=delivery,
+        reset_token=reset_token if (delivery == "direct_token" or settings.environment == "development") else None,
+    )
+
+
+@router.post("/auth/reset-password", response_model=ResetPasswordOut)
+def reset_password(
+    body: ResetPasswordIn,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> ResetPasswordOut:
+    """Verifies reset token and updates password across hospital database and Supabase Auth."""
+    token_secret = settings.dev_auth_secret or "caretrack-dev-secret-key-32bytes-min"
+    try:
+        payload = jwt.decode(
+            body.token,
+            token_secret,
+            algorithms=["HS256"],
+            options={"require": ["sub", "exp"]},
+        )
+    except jwt.PyJWTError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_or_expired_token", "message": "Password reset token is invalid or has expired."},
+        ) from exc
+
+    if payload.get("purpose") != "password_reset":
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_token_purpose", "message": "Token is not authorized for password reset."},
+        )
+
+    try:
+        user_id = UUID(payload["sub"])
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_token_subject", "message": "Invalid token subject."},
+        ) from exc
+
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "user_not_found", "message": "Account associated with token was not found."},
+        )
+
+    # IT Admin gatekeeper check: inactive or revoked accounts cannot reset password
+    if not user.is_active or user.status != "active":
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "account_revoked", "message": "This account is inactive or revoked. Contact IT Administrator."},
+        )
+
+    user.password_hash = hash_password(body.new_password)
+
+    if is_supabase_configured() and user.external_subject:
+        supabase_admin_update_password(user.external_subject, body.new_password)
+
+    record_audit(
+        db,
+        request,
+        user,
+        "auth.password_reset_completed",
+        "user",
+        user.id,
+        summary={"system_identifier": user.system_identifier},
+    )
+
+    return ResetPasswordOut(
+        status="success",
+        message="Password has been successfully updated. You may now sign in with your new password.",
+    )
 
 
 @router.post("/dev/token")
@@ -507,6 +716,11 @@ def update_user(
         target.is_active = body.is_active
         target.status = "active" if body.is_active else "revoked"
         changes["is_active"] = body.is_active
+        if is_supabase_configured() and target.external_subject:
+            if body.is_active:
+                supabase_admin_unban_user(target.external_subject)
+            else:
+                supabase_admin_ban_user(target.external_subject)
     if body.role is not None:
         target.role = body.role.value
         changes["role"] = body.role.value

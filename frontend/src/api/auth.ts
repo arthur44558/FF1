@@ -2,11 +2,15 @@ import { apiClient } from "./client";
 import type {
   DevTokenRequest,
   DevTokenResponse,
+  ForgotPasswordRequest,
+  ForgotPasswordResponse,
   LoginRequest,
   LoginResponse,
   MeOut,
   RegistrationRequestIn,
   RegistrationRequestOut,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
   UserCreate,
   UserOut,
   UserPatch,
@@ -16,6 +20,22 @@ export async function loginWithUniqueId(unique_id: string, password: string): Pr
   return apiClient<LoginResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ unique_id, password } as LoginRequest),
+    skipAuth: true,
+  });
+}
+
+export async function forgotPassword(identity: string): Promise<ForgotPasswordResponse> {
+  return apiClient<ForgotPasswordResponse>("/api/v1/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ identity } as ForgotPasswordRequest),
+    skipAuth: true,
+  });
+}
+
+export async function resetPassword(token: string, new_password: string): Promise<ResetPasswordResponse> {
+  return apiClient<ResetPasswordResponse>("/api/v1/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password } as ResetPasswordRequest),
     skipAuth: true,
   });
 }

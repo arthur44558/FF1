@@ -81,6 +81,51 @@ def _local_clock(value: str) -> time:
         ) from exc
 
 
+def compute_spaced_offsets(total_days: int) -> list[int]:
+    """
+    Spaced scheduling:
+    - Reminders 2 days apart starting from Day 2 (Day 2, Day 4, Day 6...).
+    - Final reminder 1 day before the scheduled appointment day (Day total_days - 1).
+    - If total_days <= 1: returns [] (triggers short_interval_action).
+    - If total_days == 2: returns [1].
+    - If total_days is odd (e.g. 7): Day 2, Day 4, Day 6 (Day 6 is 1 day before Day 7).
+    - If total_days is even (e.g. 6): Day 2, Day 4, Day 5 (Day 5 is 1 day before Day 6).
+    """
+    if total_days <= 1:
+        return []
+    if total_days == 2:
+        return [1]
+
+    offsets: list[int] = []
+    day = 2
+    while day < total_days - 1:
+        offsets.append(day)
+        day += 2
+
+    final_day = total_days - 1
+    if not offsets or offsets[-1] != final_day:
+        offsets.append(final_day)
+
+    return sorted(list(set(offsets)))
+
+
+def resolve_checkpoint_action(
+    severity: str | None,
+    index: int,
+    total_checkpoints: int,
+    policy_actions: list[str] | None = None,
+) -> str:
+    if policy_actions and index <= len(policy_actions):
+        return policy_actions[index - 1]
+    if severity == "severe":
+        return "call"
+    if severity == "moderate":
+        if index >= max(1, total_checkpoints - 1):
+            return "call"
+        return "message"
+    return "message"
+
+
 def build_job_specs(
     db: Session,
     followup: FollowupOrder,
@@ -110,13 +155,35 @@ def build_job_specs(
             detail={"code": "invalid_policy_window", "message": "Policy contact start must precede end"},
         )
 
-    fractions: list[float] = config.get("fractions", [])
-    actions: list[str] = config.get("actions", {}).get(followup.severity or "", [])
-    if not fractions or len(actions) != len(fractions):
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "policy_schedule_invalid", "message": "Active policy schedule is incomplete"},
-        )
+    schedule_mode = config.get("schedule_mode", "spaced")
+    if schedule_mode == "fractional":
+        fractions: list[float] = config.get("fractions", [])
+        actions: list[str] = config.get("actions", {}).get(followup.severity or "", [])
+        if not fractions or len(actions) != len(fractions):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "policy_schedule_invalid", "message": "Active policy schedule is incomplete"},
+            )
+        offset_action_pairs = [
+            (max(1, math.floor(total_days * float(frac) + 0.5)), act)
+            for frac, act in zip(fractions, actions, strict=True)
+        ]
+    else:
+        # Spaced scheduling mode (reminders two days apart, final reminder 1 day before appointment)
+        spaced_offsets = compute_spaced_offsets(total_days)
+        policy_actions = config.get("actions", {}).get(followup.severity or "", [])
+        offset_action_pairs = [
+            (
+                offset,
+                resolve_checkpoint_action(
+                    followup.severity,
+                    idx,
+                    len(spaced_offsets),
+                    policy_actions if len(policy_actions) == len(spaced_offsets) else None,
+                ),
+            )
+            for idx, offset in enumerate(spaced_offsets, start=1)
+        ]
 
     specs: list[JobSpec] = []
     chosen_contact = _permitted_contact(
@@ -155,10 +222,9 @@ def build_job_specs(
             )
 
     seen_dates: set[date] = set()
-    duplicates_or_short = False
+    duplicates_or_short = len(offset_action_pairs) == 0
     activation_day = datetime.now(timezone.utc).astimezone(zone).date()
-    for index, (fraction, action) in enumerate(zip(fractions, actions, strict=True), start=1):
-        offset = max(1, math.floor(total_days * float(fraction) + 0.5))
+    for index, (offset, action) in enumerate(offset_action_pairs, start=1):
         checkpoint_day = plan_start.date() + timedelta(days=offset)
         if (
             checkpoint_day <= activation_day
@@ -209,16 +275,17 @@ def build_job_specs(
             )
 
     if duplicates_or_short and config.get("short_interval_action", "call_task") == "call_task":
-        specs.append(
-            JobSpec(
-                sequence_no=90,
-                channel="staff_call",
-                action_kind="create_call_task",
-                scheduled_at=datetime.now(timezone.utc),
-                contact_id=voice_contact.id if voice_contact else None,
-                contact_resolution=voice_contact is None,
+        if not any(s.sequence_no > 0 for s in specs) or schedule_mode == "fractional":
+            specs.append(
+                JobSpec(
+                    sequence_no=90,
+                    channel="staff_call",
+                    action_kind="create_call_task",
+                    scheduled_at=datetime.now(timezone.utc),
+                    contact_id=voice_contact.id if voice_contact else None,
+                    contact_resolution=voice_contact is None,
+                )
             )
-        )
     return specs
 
 

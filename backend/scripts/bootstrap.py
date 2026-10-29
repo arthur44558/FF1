@@ -22,6 +22,7 @@ from app.models import (
     ScanDocument,
     User,
 )
+from app.services.scheduling import create_schedule
 
 DEFAULT_USERS = [
     ("doctor", "Dr. Amelia Reed", "doctor", "DOC-1029", "amelia.reed@caretrack.health", "Cardiology"),
@@ -101,10 +102,15 @@ def seed_policy(db, facility: Facility) -> PolicyVersion:
     )
     if existing:
         existing.is_active = True
+        if "schedule_mode" not in existing.config:
+            new_conf = dict(existing.config)
+            new_conf["schedule_mode"] = "spaced"
+            existing.config = new_conf
         return existing
 
     config = {
         "timezone": facility.timezone,
+        "schedule_mode": "spaced",
         "fractions": [0.29, 0.57, 0.79, 0.86, 0.93],
         "actions": {
             "normal": ["message", "message", "message", "message", "message"],
@@ -157,19 +163,20 @@ def seed_patient_records(db, facility: Facility, doctor: User, assistant: User, 
             db.add(patient)
             db.flush()
 
-        # 2. Contact
+        # 2. Contact (SMS & Voice)
         clean_phone = normalize_phone(item["phone"])
         fprint = destination_fingerprint(clean_phone)
         contact = db.scalar(
             select(PatientContact).where(
                 PatientContact.patient_id == patient.id,
                 PatientContact.destination_fingerprint == fprint,
+                PatientContact.channel == "sms",
             )
         )
         if not contact:
             contact = PatientContact(
                 patient_id=patient.id,
-                channel="voice",
+                channel="sms",
                 destination_encrypted=encrypt_destination(clean_phone),
                 destination_fingerprint=fprint,
                 verified_at=datetime.now(timezone.utc),
@@ -182,8 +189,8 @@ def seed_patient_records(db, facility: Facility, doctor: User, assistant: User, 
 
             pref = CommunicationPreference(
                 patient_contact_id=contact.id,
-                purpose="followup",
-                channel="voice",
+                purpose="appointment_reminder",
+                channel="sms",
                 permission_status="opted_in",
                 evidence_type="in_person_declaration",
                 evidence_reference="Reception intake consent",
@@ -191,6 +198,40 @@ def seed_patient_records(db, facility: Facility, doctor: User, assistant: User, 
                 captured_at=datetime.now(timezone.utc),
             )
             db.add(pref)
+
+        # Also voice contact for staff calls
+        voice_contact = db.scalar(
+            select(PatientContact).where(
+                PatientContact.patient_id == patient.id,
+                PatientContact.destination_fingerprint == fprint,
+                PatientContact.channel == "voice",
+            )
+        )
+        if not voice_contact:
+            voice_contact = PatientContact(
+                patient_id=patient.id,
+                channel="voice",
+                destination_encrypted=encrypt_destination(clean_phone),
+                destination_fingerprint=fprint,
+                verified_at=datetime.now(timezone.utc),
+                is_shared=False,
+                sharing_status_source="patient_direct_declaration",
+                is_active=True,
+            )
+            db.add(voice_contact)
+            db.flush()
+
+            vpref = CommunicationPreference(
+                patient_contact_id=voice_contact.id,
+                purpose="appointment_reminder",
+                channel="voice",
+                permission_status="opted_in",
+                evidence_type="in_person_declaration",
+                evidence_reference="Reception intake consent",
+                captured_by_user_id=doctor.id,
+                captured_at=datetime.now(timezone.utc),
+            )
+            db.add(vpref)
 
         # 3. Encounter
         encounter = db.scalar(
@@ -263,28 +304,31 @@ def seed_patient_records(db, facility: Facility, doctor: User, assistant: User, 
             db.add(order)
             db.flush()
 
-        # 6. Reminder Job
-        job_key = f"REM-{item['identifier']}-1"
-        job = db.scalar(
-            select(ReminderJob).where(
-                ReminderJob.idempotency_key == job_key
+        # 6. Reminder Jobs
+        if item["days_offset"] > 0:
+            create_schedule(db, order, encounter, policy, facility.timezone)
+        else:
+            job_key = f"REM-{item['identifier']}-1"
+            job = db.scalar(
+                select(ReminderJob).where(
+                    ReminderJob.idempotency_key == job_key
+                )
             )
-        )
-        if not job:
-            job = ReminderJob(
-                facility_id=facility.id,
-                followup_order_id=order.id,
-                policy_version_id=policy.id,
-                patient_contact_id=contact.id,
-                sequence_no=1,
-                channel="sms" if item["severity"] != "severe" else "staff_call",
-                action_kind="send_message" if item["severity"] != "severe" else "create_call_task",
-                scheduled_at=target_date - timedelta(days=1),
-                status="scheduled" if item["days_offset"] > 0 else "call_task_open",
-                idempotency_key=job_key,
-                attempt_count=0 if item["days_offset"] > 0 else 1,
-            )
-            db.add(job)
+            if not job:
+                job = ReminderJob(
+                    facility_id=facility.id,
+                    followup_order_id=order.id,
+                    policy_version_id=policy.id,
+                    patient_contact_id=contact.id,
+                    sequence_no=1,
+                    channel="staff_call",
+                    action_kind="create_call_task",
+                    scheduled_at=target_date,
+                    status="call_task_open",
+                    idempotency_key=job_key,
+                    attempt_count=1,
+                )
+                db.add(job)
 
     print(f"Seeded {len(SEED_PATIENTS)} historical patient records with encounters, orders & reminders.")
 

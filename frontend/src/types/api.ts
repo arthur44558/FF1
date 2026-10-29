@@ -33,6 +33,26 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface ForgotPasswordRequest {
+  identity: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+  delivery: string;
+  reset_token?: string | null;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  new_password: string;
+}
+
+export interface ResetPasswordResponse {
+  status: string;
+  message: string;
+}
+
 export interface LoginResponse {
   access_token: string;
   token_type: string;

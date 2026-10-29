@@ -11,11 +11,13 @@ import {
   X,
   AlertCircle,
   ArrowRight,
+  ArrowLeft,
+  KeyRound,
   ShieldCheck,
   FileCheck2,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { requestRegistration } from "../../api/auth";
+import { forgotPassword, requestRegistration, resetPassword } from "../../api/auth";
 
 interface LoginModalProps {
   open: boolean;
@@ -47,8 +49,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Forgot password modal
+  // Forgot password state
   const [showForgot, setShowForgot] = useState(false);
+  const [forgotStep, setForgotStep] = useState<"request" | "reset" | "success">("request");
+  const [forgotIdentity, setForgotIdentity] = useState("");
+  const [forgotToken, setForgotToken] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [forgotPassVisible, setForgotPassVisible] = useState(false);
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSuccessMsg, setForgotSuccessMsg] = useState<string | null>(null);
+  const [forgotDelivery, setForgotDelivery] = useState<string | null>(null);
 
   // Registration state
   const [regData, setRegData] = useState<RegistrationData>({
@@ -139,6 +151,57 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
       setErrorMessage(err.message || "Failed to submit registration request. Please verify fields.");
     } finally {
       setIsRegSubmitting(false);
+    }
+  };
+
+  const handleForgotRequest = async (e: FormEvent) => {
+    e.preventDefault();
+    setForgotError(null);
+    const id = forgotIdentity.trim();
+    if (!id) {
+      setForgotError("Please enter your Unique ID or Registered Work Email.");
+      return;
+    }
+    setForgotSubmitting(true);
+    try {
+      const res = await forgotPassword(id);
+      setForgotDelivery(res.delivery);
+      setForgotSuccessMsg(res.message);
+      if (res.reset_token) {
+        setForgotToken(res.reset_token);
+      }
+      setForgotStep("reset");
+    } catch (err: any) {
+      setForgotError(err.message || "Unable to initiate reset request. Please check your details.");
+    } finally {
+      setForgotSubmitting(false);
+    }
+  };
+
+  const handleResetSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setForgotError(null);
+    if (!forgotToken.trim()) {
+      setForgotError("Reset token is required.");
+      return;
+    }
+    if (forgotNewPassword.length < 8) {
+      setForgotError("New password must be at least 8 characters.");
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError("Passwords do not match.");
+      return;
+    }
+    setForgotSubmitting(true);
+    try {
+      const res = await resetPassword(forgotToken.trim(), forgotNewPassword.trim());
+      setForgotSuccessMsg(res.message);
+      setForgotStep("success");
+    } catch (err: any) {
+      setForgotError(err.message || "Invalid or expired reset token.");
+    } finally {
+      setForgotSubmitting(false);
     }
   };
 
@@ -271,7 +334,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShowForgot(true)}
+                  onClick={() => {
+                    setForgotIdentity(uniqueId.trim());
+                    setForgotStep("request");
+                    setForgotError(null);
+                    setShowForgot(true);
+                  }}
                   className="font-medium text-[#0c4b80] hover:underline"
                 >
                   Forgot Password?
@@ -514,24 +582,221 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
         </div>
       )}
 
-      {/* Forgot Password Dialog */}
+      {/* Forgot Password / Password Reset Flow */}
       {showForgot && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl border border-slate-200 text-center">
-            <h3 className="text-base font-bold text-slate-900 mb-2">Password Reset Assistance</h3>
-            <p className="text-xs text-slate-600 mb-4">
-              For security compliance under hospital safety policies, password resets must be authorized by your clinic
-              IT Administrator.
-            </p>
-            <p className="text-xs text-slate-500 font-mono bg-slate-50 p-2.5 rounded-lg border border-slate-200 mb-4">
-              Contact: support@caretrack.health<br />Ref: Credential Assistance
-            </p>
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-slate-200 relative">
             <button
-              onClick={() => setShowForgot(false)}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white font-medium text-xs rounded-xl"
+              onClick={() => {
+                setShowForgot(false);
+                setForgotStep("request");
+                setForgotError(null);
+              }}
+              className="absolute right-4 top-4 p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              aria-label="Close"
             >
-              Close
+              <X className="size-5" />
             </button>
+
+            {forgotStep === "request" && (
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="flex items-center justify-center size-10 rounded-xl bg-[#0c4b80]/10 text-[#0c4b80]">
+                    <KeyRound className="size-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Forgot Password</h3>
+                    <p className="text-xs text-slate-500">CareTrack & Supabase Identity Recovery</p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+                  Enter your <strong>Unique ID</strong> (e.g. DOC-1029) or registered <strong>Work Email</strong>.
+                  Reset instructions will be delivered to you or generated for authorized accounts.
+                </p>
+
+                {forgotError && (
+                  <div className="p-3 mb-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
+                    <AlertCircle className="size-4 shrink-0 mt-0.5 text-rose-600" />
+                    <span>{forgotError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleForgotRequest} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="forgot-identity">
+                      Unique ID or Work Email
+                    </label>
+                    <div className="relative">
+                      <UserRound className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                      <input
+                        id="forgot-identity"
+                        type="text"
+                        required
+                        value={forgotIdentity}
+                        onChange={(e) => setForgotIdentity(e.target.value)}
+                        placeholder="e.g. DOC-1029 or amelia.reed@caretrack.health"
+                        className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0c4b80]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgot(false)}
+                      className="flex-1 py-2.5 px-4 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs rounded-xl transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={forgotSubmitting}
+                      className="flex-1 py-2.5 px-4 bg-[#0c4b80] hover:bg-[#0a3e6a] text-white font-semibold text-xs rounded-xl shadow transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <span>{forgotSubmitting ? "Verifying…" : "Continue"}</span>
+                      <ArrowRight className="size-4" />
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {forgotStep === "reset" && (
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="flex items-center justify-center size-10 rounded-xl bg-[#c94e08]/10 text-[#c94e08]">
+                    <LockKeyhole className="size-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Set New Password</h3>
+                    <p className="text-xs text-slate-500">Provide reset token & new credential</p>
+                  </div>
+                </div>
+
+                {forgotSuccessMsg && (
+                  <div className="p-3 mb-4 rounded-xl bg-sky-50 border border-sky-200 text-xs text-sky-800 leading-relaxed">
+                    {forgotSuccessMsg}
+                    {forgotDelivery === "direct_token" && forgotToken && (
+                      <span className="block mt-1 font-semibold text-sky-900">
+                        (Active reset token prefilled below for local verification)
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {forgotError && (
+                  <div className="p-3 mb-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
+                    <AlertCircle className="size-4 shrink-0 mt-0.5 text-rose-600" />
+                    <span>{forgotError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleResetSubmit} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="reset-token">
+                      Reset Token
+                    </label>
+                    <input
+                      id="reset-token"
+                      type="text"
+                      required
+                      value={forgotToken}
+                      onChange={(e) => setForgotToken(e.target.value)}
+                      placeholder="Paste reset token here"
+                      className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0c4b80]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="new-password">
+                      New Password (min 8 characters)
+                    </label>
+                    <div className="relative">
+                      <LockKeyhole className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                      <input
+                        id="new-password"
+                        type={forgotPassVisible ? "text" : "password"}
+                        required
+                        minLength={8}
+                        value={forgotNewPassword}
+                        onChange={(e) => setForgotNewPassword(e.target.value)}
+                        placeholder="Enter new strong password"
+                        className="w-full pl-10 pr-10 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0c4b80]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setForgotPassVisible(!forgotPassVisible)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded"
+                      >
+                        {forgotPassVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="confirm-new-password">
+                      Confirm New Password
+                    </label>
+                    <input
+                      id="confirm-new-password"
+                      type={forgotPassVisible ? "text" : "password"}
+                      required
+                      minLength={8}
+                      value={forgotConfirmPassword}
+                      onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                      placeholder="Confirm new password"
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0c4b80]"
+                    />
+                  </div>
+
+                  <div className="flex gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setForgotStep("request")}
+                      className="flex-1 py-2 px-3 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <ArrowLeft className="size-3.5" />
+                      <span>Back</span>
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={forgotSubmitting}
+                      className="flex-2 py-2 px-4 bg-[#c94e08] hover:bg-[#b04406] text-white font-semibold text-xs rounded-xl shadow transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <span>{forgotSubmitting ? "Updating Password…" : "Update Password"}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {forgotStep === "success" && (
+              <div className="text-center py-2">
+                <span className="inline-flex items-center justify-center size-14 rounded-full bg-emerald-100 text-emerald-600 mb-4">
+                  <CheckCircle2 className="size-8" />
+                </span>
+                <h3 className="text-base font-bold text-slate-900 mb-1">Password Successfully Updated</h3>
+                <p className="text-xs text-slate-600 mb-5 leading-relaxed">
+                  Your new credentials have been safely synchronized across CareTrack and Supabase Auth. You can now log
+                  in using your new password.
+                </p>
+                <button
+                  onClick={() => {
+                    setShowForgot(false);
+                    setForgotStep("request");
+                    setForgotError(null);
+                    setPassword("");
+                    if (forgotIdentity) {
+                      setUniqueId(forgotIdentity);
+                    }
+                  }}
+                  className="w-full py-2.5 bg-[#0c4b80] hover:bg-[#0a3e6a] text-white font-semibold text-sm rounded-xl transition-colors shadow"
+                >
+                  Return to Sign In
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

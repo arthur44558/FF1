@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     contact_encryption_key: str = ""
     contact_fingerprint_key: str = ""
     provider_webhook_secret: str = ""
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_service_role_key: str = ""
     messaging_provider: str = "fake"
     outbound_messaging_enabled: bool = False
     worker_poll_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
