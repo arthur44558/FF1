@@ -177,11 +177,15 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
   const refreshData = async () => {
     try {
       setLoading(true);
-      const [usersData, requestsData, auditData] = await Promise.all([
+      const [usersRes, requestsRes, auditRes] = await Promise.allSettled([
         listUsers(),
         listRegistrationRequests(),
         listAuditEvents({ limit: 50 }),
       ]);
+
+      const usersData = usersRes.status === "fulfilled" && Array.isArray(usersRes.value) ? usersRes.value : [];
+      const requestsData = requestsRes.status === "fulfilled" && Array.isArray(requestsRes.value) ? requestsRes.value : [];
+      const auditData = auditRes.status === "fulfilled" && auditRes.value?.items ? auditRes.value.items : [];
 
       const displayAccounts: DisplayAccount[] = usersData.map((u: UserOut) => ({
         id: u.id,
@@ -196,7 +200,7 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
 
       setAccounts(displayAccounts);
       setRequests(requestsData);
-      setLogs(auditData.items);
+      setLogs(auditData);
     } catch (err: any) {
       console.error("Failed to load IT admin data", err);
     } finally {
@@ -440,6 +444,84 @@ export function ITHeadAdminScreen({ onGoHome }: { onGoHome?: () => void }) {
             <span className="mx-1 text-slate-300">•</span> Authoritative FastAPI Backend
           </div>
         </section>
+
+        {/* Visible Tab Navigation Bar */}
+        <div className="flex flex-wrap items-center gap-2 mb-6 border-b border-slate-200 pb-4">
+          <button
+            onClick={() => setTab("accounts")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition ${
+              tab === "accounts"
+                ? "bg-[#0c4b80] text-white shadow-sm"
+                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
+            }`}
+          >
+            <UserRound className="size-4" />
+            <span>Current Accounts ({accounts.length})</span>
+          </button>
+
+          <button
+            onClick={() => setTab("requests")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition relative ${
+              tab === "requests"
+                ? "bg-[#0c4b80] text-white shadow-sm"
+                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
+            }`}
+          >
+            <ClipboardCheck className="size-4" />
+            <span>Account Creation Requests</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                requests.length > 0
+                  ? tab === "requests"
+                    ? "bg-amber-400 text-slate-900"
+                    : "bg-amber-500 text-white animate-pulse"
+                  : tab === "requests"
+                  ? "bg-white/20 text-white"
+                  : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              {requests.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setTab("logs")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition ${
+              tab === "logs"
+                ? "bg-[#0c4b80] text-white shadow-sm"
+                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
+            }`}
+          >
+            <FileCheck2 className="size-4" />
+            <span>Activity Logs ({logs.length})</span>
+          </button>
+        </div>
+
+        {/* Pending Requests Alert Banner on Accounts Tab */}
+        {requests.length > 0 && tab === "accounts" && (
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50/90 p-4 text-xs text-amber-900 shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white shadow-sm">
+                <ClipboardCheck className="size-5" />
+              </span>
+              <div>
+                <strong className="block text-sm font-bold text-amber-950">
+                  {requests.length} Pending Account Registration Request{requests.length > 1 ? "s" : ""}
+                </strong>
+                <p className="mt-0.5 text-amber-800">
+                  Staff applicants (including {requests[0]?.full_name || "new staff"}) are awaiting your IT administrator approval to sign in.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setTab("requests")}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white shadow hover:bg-amber-700 transition"
+            >
+              <span>Review & Approve Requests ({requests.length})</span>
+              <ArrowRight className="size-3.5" />
+            </button>
+          </div>
+        )}
 
         {notice && (
           <div className="mb-5 flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">

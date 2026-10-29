@@ -75,8 +75,9 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestOptions): T 
         full_name: data.full_name || "Applicant",
         work_email: data.work_email || "",
         department: data.department || "General",
-        requested_role: data.requested_role || "doctor",
+        requested_role: data.requested_role || "receptionist",
         status: "pending",
+        certification_agreed: true,
         created_at: new Date().toISOString(),
       };
       pending.push(newReq);
@@ -135,23 +136,23 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestOptions): T 
       }
 
       // Check registered accounts
-      const pending = JSON.parse(localStorage.getItem("caretrack_pending_registrations") || "[]");
-      const matched = pending.find((p: any) => p.work_email?.toLowerCase() === id);
+      const approvedUsers = JSON.parse(localStorage.getItem("caretrack_approved_users") || "[]");
+      const matched = approvedUsers.find((p: any) => p.work_email?.toLowerCase() === id || p.system_identifier?.toLowerCase() === id);
       if (matched) {
-        const fakeToken = "demo-token-" + matched.requested_role + "-" + Date.now();
+        const fakeToken = "demo-token-" + matched.role + "-" + Date.now();
         localStorage.setItem("caretrack_demo_user", JSON.stringify({
-          role: matched.requested_role,
-          name: matched.full_name,
-          system_identifier: matched.id,
+          role: matched.role,
+          name: matched.display_name,
+          system_identifier: matched.system_identifier,
           email: matched.work_email,
         }));
         return {
           access_token: fakeToken,
           token_type: "bearer",
           expires_in: 3600,
-          role: matched.requested_role,
-          system_identifier: matched.id,
-          display_name: matched.full_name,
+          role: matched.role,
+          system_identifier: matched.system_identifier,
+          display_name: matched.display_name,
         } as T;
       }
     } catch {
@@ -164,10 +165,10 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestOptions): T 
     try {
       const saved = localStorage.getItem("caretrack_demo_user");
       const u = saved ? JSON.parse(saved) : {
-        role: "doctor",
-        name: "Dr. Amelia Reed",
-        system_identifier: "DOC-1029",
-        email: "amelia.reed@caretrack.health",
+        role: "system_admin",
+        name: "IT Head",
+        system_identifier: "ITH-001",
+        email: "it.head@caretrack.health",
       };
       return {
         id: "usr-" + u.system_identifier,
@@ -178,7 +179,7 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestOptions): T 
         work_email: u.email,
         status: "active",
         is_active: true,
-        department: "Clinical Staff",
+        department: "Security Operations",
         facility_id: "fac-001",
         permissions: [
           "patient.read", "patient.write", "scan.upload", "scan.verify",
@@ -193,31 +194,121 @@ function handleOfflineFallback<T>(endpoint: string, options: RequestOptions): T 
     }
   }
 
-  // 4. Admin registration requests
+  // 4. Staff Accounts Directory (/api/v1/users)
+  if (normEndpoint.includes("/api/v1/users") && (!options.method || options.method === "GET")) {
+    const DEFAULT_STAFF = [
+      { id: "usr-1", username: "doctor", display_name: "Dr. Amelia Reed", role: "doctor", system_identifier: "DOC-1029", work_email: "amelia.reed@caretrack.health", department: "Cardiology", status: "active", is_active: true },
+      { id: "usr-2", username: "assistant", display_name: "Dr. Marcus Chen (Assistant)", role: "assistant_verifier", system_identifier: "AST-9021", work_email: "marcus.chen@caretrack.health", department: "Emergency Medicine", status: "active", is_active: true },
+      { id: "usr-3", username: "coordinator", display_name: "James Okafor", role: "followup_coordinator", system_identifier: "STF-4410", work_email: "james.okafor@caretrack.health", department: "Laboratory", status: "active", is_active: true },
+      { id: "usr-4", username: "supervisor", display_name: "Nadia Williams (Head)", role: "clinic_supervisor", system_identifier: "HD-101", work_email: "nadia.williams@caretrack.health", department: "Nursing Operations", status: "active", is_active: true },
+      { id: "usr-5", username: "reception", display_name: "Priya Nair", role: "receptionist", system_identifier: "RCP-302", work_email: "priya.nair@caretrack.health", department: "Front Office", status: "active", is_active: true },
+      { id: "usr-6", username: "admin", display_name: "IT Head", role: "system_admin", system_identifier: "ITH-001", work_email: "it.head@caretrack.health", department: "Security Operations", status: "active", is_active: true },
+      { id: "usr-7", username: "auditor", display_name: "Compliance Auditor", role: "auditor", system_identifier: "AUD-001", work_email: "auditor@caretrack.health", department: "Compliance", status: "active", is_active: true },
+    ];
+    try {
+      const approved = JSON.parse(localStorage.getItem("caretrack_approved_users") || "[]");
+      return [...DEFAULT_STAFF, ...approved] as T;
+    } catch {
+      return DEFAULT_STAFF as T;
+    }
+  }
+
+  // 5. Admin Registration Requests Queue
   if (normEndpoint.includes("/admin/registration-requests")) {
     try {
-      const pending = JSON.parse(localStorage.getItem("caretrack_pending_registrations") || "[]");
+      let pending = JSON.parse(localStorage.getItem("caretrack_pending_registrations") || "[]");
+      if (!Array.isArray(pending) || pending.length === 0) {
+        pending = [
+          {
+            id: "req-divyansh-01",
+            full_name: "Divyansh",
+            work_email: "div6349@gmail.com",
+            department: "Cardiology",
+            requested_role: "receptionist",
+            status: "pending",
+            certification_agreed: true,
+            created_at: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
+          }
+        ];
+        localStorage.setItem("caretrack_pending_registrations", JSON.stringify(pending));
+      }
+
       if (options.method === "POST" && normEndpoint.includes("/approve")) {
-        return {
-          id: "usr-" + Date.now(),
-          username: "approved_staff",
-          role: "receptionist",
-          system_identifier: "RCP-9011",
-          display_name: "Approved Staff",
-          work_email: "",
-          department: "Front Office",
+        const parts = normEndpoint.split("/");
+        const reqId = parts[parts.indexOf("registration-requests") + 1];
+        const target = pending.find((r: any) => r.id === reqId) || pending[0];
+        const allottedId = "RCP-" + Math.floor(1000 + Math.random() * 9000);
+
+        // Remove from pending
+        pending = pending.filter((r: any) => r.id !== reqId);
+        localStorage.setItem("caretrack_pending_registrations", JSON.stringify(pending));
+
+        // Add to approved users list
+        const approvedUsers = JSON.parse(localStorage.getItem("caretrack_approved_users") || "[]");
+        const newUser = {
+          id: "usr-" + (target?.id || Date.now()),
+          username: target?.work_email || "approved_staff",
+          display_name: target?.full_name || "Approved Staff",
+          role: target?.requested_role || "receptionist",
+          system_identifier: allottedId,
+          work_email: target?.work_email || "",
+          department: target?.department || "Cardiology",
           status: "active",
           is_active: true,
           created_at: new Date().toISOString(),
-        } as T;
+        };
+        approvedUsers.push(newUser);
+        localStorage.setItem("caretrack_approved_users", JSON.stringify(approvedUsers));
+
+        return newUser as T;
       }
+
+      if (options.method === "POST" && normEndpoint.includes("/reject")) {
+        const parts = normEndpoint.split("/");
+        const reqId = parts[parts.indexOf("registration-requests") + 1];
+        pending = pending.filter((r: any) => r.id !== reqId);
+        localStorage.setItem("caretrack_pending_registrations", JSON.stringify(pending));
+        return { status: "rejected", message: "Request rejected successfully" } as T;
+      }
+
       return pending as T;
     } catch {
       return [] as T;
     }
   }
 
-  // 5. Operations Summary
+  // 6. Audit Events
+  if (normEndpoint.includes("/audit-events")) {
+    return {
+      items: [
+        {
+          id: "aud-1",
+          actor_user_id: "usr-6",
+          actor_username: "admin",
+          action: "auth.login",
+          entity_type: "user",
+          entity_id: "usr-6",
+          recorded_at: new Date().toISOString(),
+          summary: { outcome: "success", system_identifier: "ITH-001" },
+        },
+        {
+          id: "aud-2",
+          actor_user_id: "usr-1",
+          actor_username: "doctor",
+          action: "clinical.review",
+          entity_type: "scan",
+          entity_id: "scan-901",
+          recorded_at: new Date(Date.now() - 3600000).toISOString(),
+          summary: { outcome: "verified", followup_scheduled: true },
+        }
+      ],
+      total: 2,
+      page: 1,
+      page_size: 50,
+    } as T;
+  }
+
+  // 7. Operations Summary
   if (normEndpoint.includes("/operations/summary")) {
     return {
       active_followups_total: 24,
@@ -275,7 +366,7 @@ export async function apiClient<T>(
   let response: Response;
   try {
     response = await fetch(url, fetchOptions);
-  } catch (err: any) {
+  } catch {
     const fallback = handleOfflineFallback<T>(endpoint, options);
     if (fallback !== null) {
       return fallback;
@@ -283,7 +374,7 @@ export async function apiClient<T>(
     throw new ApiError(
       0,
       `Network connection failed. Backend service may be unreachable.`,
-      { code: "network_error", message: err.message || "Failed to fetch" }
+      { code: "network_error", message: "Failed to fetch" }
     );
   }
 
