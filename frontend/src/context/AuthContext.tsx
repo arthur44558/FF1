@@ -59,11 +59,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token, refreshMe, logout]);
 
-  const login = async (uniqueId: string, password: string) => {
+  const login = async (emailOrId: string, password: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await loginWithUniqueId(uniqueId, password);
+      const response = await loginWithUniqueId(emailOrId, password);
       setStoredToken(response.access_token);
       setToken(response.access_token);
       try {
@@ -73,7 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new ApiError(meErr.status || 500, "Failed to load user profile", { code: "session_error" });
       }
     } catch (err: any) {
-      const msg = err.message || "Invalid Unique ID or Access Revoked";
+      const msg = err.message || "Invalid email or password";
       setError(msg);
       throw err;
     } finally {

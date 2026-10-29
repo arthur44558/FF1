@@ -97,21 +97,25 @@ def login(
     recent.append(now)
     _token_attempts[key] = recent
 
-    clean_id = body.unique_id.strip()
+    clean_id = (body.email or body.unique_id or "").strip()
     identifier = clean_id.upper()
-    user = db.scalar(
-        select(User).where(
-            (User.system_identifier == identifier)
-            | (User.username == clean_id)
-            | (User.username == clean_id.lower())
-            | (User.work_email == clean_id.lower())
-        )
-    )
 
     SAFE_ERROR = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail={"code": "invalid_credentials", "message": "Invalid Unique ID or Access Revoked"},
+        detail={"code": "invalid_credentials", "message": "Invalid email or password"},
         headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    if not clean_id:
+        raise SAFE_ERROR
+
+    user = db.scalar(
+        select(User).where(
+            (User.work_email == clean_id.lower())
+            | (User.system_identifier == identifier)
+            | (User.username == clean_id)
+            | (User.username == clean_id.lower())
+        )
     )
 
     if user is None:

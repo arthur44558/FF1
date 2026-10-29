@@ -29,7 +29,8 @@ export interface ApiErrorResponse {
 }
 
 export interface LoginRequest {
-  unique_id: string;
+  email?: string;
+  unique_id?: string;
   password: string;
 }
 

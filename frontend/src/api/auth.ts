@@ -16,13 +16,20 @@ import type {
   UserPatch,
 } from "../types/api";
 
-export async function loginWithUniqueId(unique_id: string, password: string): Promise<LoginResponse> {
+export async function loginWithUniqueId(emailOrId: string, password: string): Promise<LoginResponse> {
+  const clean = emailOrId.trim();
   return apiClient<LoginResponse>("/api/v1/auth/login", {
     method: "POST",
-    body: JSON.stringify({ unique_id, password } as LoginRequest),
+    body: JSON.stringify({
+      email: clean,
+      unique_id: clean,
+      password,
+    } as LoginRequest),
     skipAuth: true,
   });
 }
+
+export const loginWithCredentials = loginWithUniqueId;
 
 export async function forgotPassword(identity: string): Promise<ForgotPasswordResponse> {
   return apiClient<ForgotPasswordResponse>("/api/v1/auth/forgot-password", {

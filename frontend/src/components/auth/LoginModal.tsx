@@ -1,6 +1,5 @@
 import React, { useState, type FormEvent } from "react";
 import {
-  BadgeCheck,
   LockKeyhole,
   Eye,
   EyeOff,
@@ -42,7 +41,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
   const [activeTab, setActiveTab] = useState<AuthTab>("signin");
 
   // Sign-in state
-  const [uniqueId, setUniqueId] = useState("");
+  const [emailOrId, setEmailOrId] = useState("");
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [rememberId, setRememberId] = useState(true);
@@ -83,15 +82,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
     e.preventDefault();
     setErrorMessage(null);
 
-    const cleanId = uniqueId.trim();
-    if (!cleanId || !password) {
-      setErrorMessage("Invalid Unique ID or Access Revoked");
+    const cleanInput = emailOrId.trim();
+    if (!cleanInput || !password) {
+      setErrorMessage("Please enter your work email and password.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await login(cleanId, password.trim());
+      await login(cleanInput, password.trim());
       onClose();
       if (onSuccess) onSuccess();
     } catch (err: any) {
@@ -102,7 +101,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
       } else if (err.code === "session_error") {
         setErrorMessage("Authentication succeeded, but failed to load user profile.");
       } else {
-        setErrorMessage("Invalid Unique ID or Access Revoked");
+        setErrorMessage("Invalid email or password");
       }
     } finally {
       setIsSubmitting(false);
@@ -270,28 +269,28 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
           )}
 
           {activeTab === "signin" ? (
-            /* SIGN IN FORM (login page1.zip design) */
+            /* SIGN IN FORM (Email & Password) */
             <form onSubmit={handleSignIn} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="signin-unique-id">
-                  Generated Unique ID
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="signin-email">
+                  Work Email Address
                 </label>
                 <div className="relative">
-                  <BadgeCheck className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                   <input
-                    id="signin-unique-id"
+                    id="signin-email"
                     type="text"
                     required
-                    value={uniqueId}
-                    onChange={(e) => setUniqueId(e.target.value)}
-                    placeholder="e.g. DOC-1029, AST-9021, STF-4410, ITH-001"
-                    className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0c4b80] focus:border-transparent transition-all uppercase placeholder:normal-case font-mono"
+                    value={emailOrId}
+                    onChange={(e) => setEmailOrId(e.target.value)}
+                    placeholder="e.g. amelia.reed@caretrack.health"
+                    className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0c4b80] focus:border-transparent transition-all placeholder:text-slate-400"
                     spellCheck={false}
-                    autoComplete="username"
+                    autoComplete="username email"
                   />
                 </div>
                 <p className="mt-1.5 text-[11px] text-slate-500">
-                  Enter the Unique ID issued to you by the IT administrator upon approval.
+                  Enter your registered hospital work email (or staff ID).
                 </p>
               </div>
 
@@ -330,12 +329,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
                     onChange={(e) => setRememberId(e.target.checked)}
                     className="rounded border-slate-300 text-[#0c4b80] focus:ring-[#0c4b80]"
                   />
-                  <span>Remember ID on this device</span>
+                  <span>Remember on this device</span>
                 </label>
                 <button
                   type="button"
                   onClick={() => {
-                    setForgotIdentity(uniqueId.trim());
+                    setForgotIdentity(emailOrId.trim());
                     setForgotStep("request");
                     setForgotError(null);
                     setShowForgot(true);
@@ -351,7 +350,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
                 disabled={isSubmitting}
                 className="w-full mt-2 py-3 px-4 bg-[#c94e08] hover:bg-[#b04406] active:bg-[#973a05] text-white font-semibold text-sm rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <span>{isSubmitting ? "Checking Unique ID…" : "Sign In to Workspace"}</span>
+                <span>{isSubmitting ? "Signing In…" : "Sign In with Email"}</span>
                 {!isSubmitting && <ArrowRight className="size-4" />}
               </button>
 
@@ -359,68 +358,74 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
               <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                 <p className="text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
                   <LockKeyhole className="size-3 text-slate-500" />
-                  Pre-Provisioned Demo Unique IDs (Password: <code>CareTrack@2026</code>)
+                  Pre-Provisioned Demo Staff Accounts (Password: <code>CareTrack@2026</code>)
                 </p>
                 <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono text-slate-600">
                   <button
                     type="button"
                     onClick={() => {
-                      setUniqueId("DOC-1029");
+                      setEmailOrId("amelia.reed@caretrack.health");
                       setPassword("CareTrack@2026");
                     }}
-                    className="text-left p-1 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors"
+                    className="text-left p-1.5 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors truncate"
+                    title="amelia.reed@caretrack.health (Doctor)"
                   >
-                    • <strong>DOC-1029</strong> (Doctor)
+                    • <strong>Dr. Amelia</strong> (Doctor)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setUniqueId("AST-9021");
+                      setEmailOrId("marcus.chen@caretrack.health");
                       setPassword("CareTrack@2026");
                     }}
-                    className="text-left p-1 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors"
+                    className="text-left p-1.5 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors truncate"
+                    title="marcus.chen@caretrack.health (Assistant)"
                   >
-                    • <strong>AST-9021</strong> (Assistant)
+                    • <strong>Dr. Marcus</strong> (Assistant)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setUniqueId("STF-4410");
+                      setEmailOrId("james.okafor@caretrack.health");
                       setPassword("CareTrack@2026");
                     }}
-                    className="text-left p-1 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors"
+                    className="text-left p-1.5 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors truncate"
+                    title="james.okafor@caretrack.health (Coordinator)"
                   >
-                    • <strong>STF-4410</strong> (Coordinator)
+                    • <strong>James Okafor</strong> (Coord.)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setUniqueId("HD-101");
+                      setEmailOrId("nadia.williams@caretrack.health");
                       setPassword("CareTrack@2026");
                     }}
-                    className="text-left p-1 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors"
+                    className="text-left p-1.5 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors truncate"
+                    title="nadia.williams@caretrack.health (Staff Head)"
                   >
-                    • <strong>HD-101</strong> (Staff Head)
+                    • <strong>Nadia W.</strong> (Head)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setUniqueId("RCP-302");
+                      setEmailOrId("priya.nair@caretrack.health");
                       setPassword("CareTrack@2026");
                     }}
-                    className="text-left p-1 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors"
+                    className="text-left p-1.5 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors truncate"
+                    title="priya.nair@caretrack.health (Reception)"
                   >
-                    • <strong>RCP-302</strong> (Reception)
+                    • <strong>Priya Nair</strong> (Reception)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setUniqueId("ITH-001");
+                      setEmailOrId("it.head@caretrack.health");
                       setPassword("CareTrack@2026");
                     }}
-                    className="text-left p-1 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors"
+                    className="text-left p-1.5 rounded hover:bg-white border border-transparent hover:border-slate-200 transition-colors truncate"
+                    title="it.head@caretrack.health (IT Admin)"
                   >
-                    • <strong>ITH-001</strong> (IT Admin)
+                    • <strong>IT Head</strong> (Admin)
                   </button>
                 </div>
               </div>
@@ -788,7 +793,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, onSuccess
                     setForgotError(null);
                     setPassword("");
                     if (forgotIdentity) {
-                      setUniqueId(forgotIdentity);
+                      setEmailOrId(forgotIdentity);
                     }
                   }}
                   className="w-full py-2.5 bg-[#0c4b80] hover:bg-[#0a3e6a] text-white font-semibold text-sm rounded-xl transition-colors shadow"
