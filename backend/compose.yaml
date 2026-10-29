@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: $POSTGRES_USER
+      POSTGRES_PASSWORD: $POSTGRES_PASSWORD
+      POSTGRES_DB: $POSTGRES_DB
+    volumes:
+      - followup_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment: &app_environment
+      ENVIRONMENT: $ENVIRONMENT
+      DATABASE_URL: postgresql+psycopg://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB
+      AUTH_MODE: $AUTH_MODE
+      DEV_AUTH_SECRET: $DEV_AUTH_SECRET
+      OIDC_ISSUER: $OIDC_ISSUER
+      OIDC_AUDIENCE: $OIDC_AUDIENCE
+      OIDC_JWKS_URL: $OIDC_JWKS_URL
+      PRIVATE_STORAGE_DIR: /app/private_scans
+      FORM_TEMPLATES_PATH: /app/config/form_templates.json
+      MAX_SCAN_BYTES: $MAX_SCAN_BYTES
+      CONTACT_ENCRYPTION_KEY: $CONTACT_ENCRYPTION_KEY
+      CONTACT_FINGERPRINT_KEY: $CONTACT_FINGERPRINT_KEY
+      PROVIDER_WEBHOOK_SECRET: $PROVIDER_WEBHOOK_SECRET
+      MESSAGING_PROVIDER: fake
+      OUTBOUND_MESSAGING_ENABLED: "false"
+      WORKER_POLL_SECONDS: $WORKER_POLL_SECONDS
+      WORKER_BATCH_SIZE: $WORKER_BATCH_SIZE
+      ALLOWED_HOSTS: $ALLOWED_HOSTS
+      BOOTSTRAP_FACILITY_NAME: $BOOTSTRAP_FACILITY_NAME
+      BOOTSTRAP_FACILITY_TIMEZONE: $BOOTSTRAP_FACILITY_TIMEZONE
+      BOOTSTRAP_ADMIN_USERNAME: $BOOTSTRAP_ADMIN_USERNAME
+      BOOTSTRAP_ADMIN_NAME: $BOOTSTRAP_ADMIN_NAME
+      BOOTSTRAP_ADMIN_SUBJECT: $BOOTSTRAP_ADMIN_SUBJECT
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *app_environment
+    volumes:
+      - followup_scans:/app/private_scans
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.workers.runner"]
+    environment: *app_environment
+    volumes:
+      - followup_scans:/app/private_scans
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  followup_db:
+  followup_scans:

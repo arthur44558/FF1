@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hospital Follow-up API Test Console</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17212b;
+      --muted: #5b6875;
+      --line: #d8e0e7;
+      --surface: #ffffff;
+      --canvas: #f3f6f8;
+      --blue: #155eef;
+      --green: #157347;
+      --red: #b42318;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); }
+    header { padding: 26px max(22px, calc((100vw - 1200px) / 2)); background: #102a43; color: white; }
+    header h1 { margin: 0 0 8px; font-size: clamp(1.35rem, 3vw, 2rem); }
+    header p { margin: 0; max-width: 850px; color: #d9e6f2; line-height: 1.5; }
+    main { max-width: 1200px; margin: 22px auto 48px; padding: 0 18px; }
+    .notice { padding: 12px 15px; margin-bottom: 16px; background: #fff7e6; border: 1px solid #f2d38a; border-radius: 10px; line-height: 1.45; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+    section { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px #102a4308; }
+    section.wide { grid-column: 1 / -1; }
+    h2 { margin: 0 0 8px; font-size: 1.08rem; }
+    .hint { margin: 0 0 14px; color: var(--muted); font-size: .9rem; line-height: 1.45; }
+    label { display: block; margin: 10px 0 5px; font-size: .88rem; font-weight: 650; }
+    input, select, textarea { width: 100%; padding: 9px 10px; border: 1px solid #b9c5d0; border-radius: 7px; background: #fff; color: var(--ink); font: inherit; }
+    input[type="checkbox"] { width: auto; margin-right: 7px; }
+    .check { display: flex; align-items: center; margin-top: 13px; }
+    .check label { margin: 0; font-weight: 500; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    button, a.button { display: inline-block; border: 0; border-radius: 7px; padding: 9px 12px; background: var(--blue); color: white; font: inherit; font-weight: 650; cursor: pointer; text-decoration: none; }
+    button.secondary, a.button.secondary { background: #e8eef5; color: #17324d; }
+    button:disabled { opacity: .55; cursor: wait; }
+    .status { min-height: 1.4em; color: var(--muted); font-size: .9rem; }
+    .status.good { color: var(--green); }
+    .status.bad { color: var(--red); }
+    pre { margin: 10px 0 0; max-height: 300px; overflow: auto; padding: 12px; background: #101923; color: #e6edf3; border-radius: 8px; font-size: .82rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #activity { max-height: 260px; }
+    .topline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+    .identity { color: #d9e6f2; font-size: .9rem; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } section.wide { grid-column: auto; } .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topline">
+      <div>
+        <h1>Hospital Follow-up API Test Console</h1>
+        <p>Small development UI for exercising the backend workflow. Requests go to this server; the page does not store your bearer token after you close it.</p>
+      </div>
+      <div id="identity" class="identity">Not signed in</div>
+    </div>
+  </header>
+  <main>
+    <div class="notice"><strong>Development only.</strong> Use synthetic records. The local form template is intentionally unconfigured and outbound messaging is disabled.</div>
+    <div class="grid">
+      <section>
+        <h2>1. Service and demo login</h2>
+        <p class="hint">Development tokens expire after 15 minutes. Switch accounts to exercise role-specific endpoints.</p>
+        <div class="row">
+          <button type="button" id="health">Check service health</button>
+          <a class="button secondary" href="/docs" target="_blank" rel="noreferrer">Open API docs</a>
+        </div>
+        <label for="username">Seeded demo user</label>
+        <select id="username">
+          <option value="assistant">assistant — assistant_verifier</option>
+          <option value="doctor">doctor — doctor</option>
+          <option value="coordinator">coordinator — followup_coordinator</option>
+          <option value="supervisor">supervisor — clinic_supervisor</option>
+          <option value="admin">admin — system_admin</option>
+          <option value="auditor">auditor — auditor</option>
+        </select>
+        <div class="buttons"><button type="button" id="login">Get development token</button></div>
+        <div id="auth-status" class="status" aria-live="polite"></div>
+        <pre id="me-output">Sign in to see the current user and permissions.</pre>
+      </section>
+
+      <section>
+        <h2>2. Create synthetic patient and encounter</h2>
+        <p class="hint">Use the doctor account to create these records. The clinician ID is filled from the doctor account when available.</p>
+        <label for="patient-identifier">Hospital patient identifier</label>
+        <input id="patient-identifier" value="TEST-PATIENT-001" maxlength="120">
+        <label for="patient-name">Display name</label>
+        <input id="patient-name" value="Synthetic Test Patient" maxlength="160">
+        <div class="buttons"><button type="button" id="create-patient">Create patient</button></div>
+        <label for="patient-id">Patient UUID</label>
+        <input id="patient-id" placeholder="Filled after creation">
+        <div class="row">
+          <div><label for="encounter-identifier">Encounter identifier</label><input id="encounter-identifier" value="TEST-ENCOUNTER-001" maxlength="120"></div>
+          <div><label for="clinician-id">Clinician user UUID</label><input id="clinician-id" placeholder="Sign in as doctor to fill"></div>
+        </div>
+        <label for="encounter-at">Encounter time</label>
+        <input id="encounter-at" type="datetime-local">
+        <div class="buttons"><button type="button" id="create-encounter">Create encounter</button></div>
+        <label for="encounter-id">Encounter UUID</label>
+        <input id="encounter-id" placeholder="Filled after creation">
+        <div id="records-status" class="status" aria-live="polite"></div>
+        <pre id="records-output">Created record details appear here.</pre>
+      </section>
+
+      <section>
+        <h2>3. Upload and process a scan</h2>
+        <p class="hint">Upload a JPEG, PNG, or WebP. Processing needs a configured fixed-layout form template; otherwise the scan fails closed.</p>
+        <label for="scan-file">Synthetic scan image</label>
+        <input id="scan-file" type="file" accept="image/jpeg,image/png,image/webp">
+        <div class="row">
+          <div><label for="form-identifier">Form identifier</label><input id="form-identifier" value="TEST-FORM-001"></div>
+          <div><label for="form-version">Configured form version</label><input id="form-version" value="clinic-form-v1"></div>
+        </div>
+        <div class="buttons">
+          <button type="button" id="upload-scan">Upload scan</button>
+          <button type="button" class="secondary" id="process-scan">Queue processing</button>
+          <button type="button" class="secondary" id="review-scan">Review scan</button>
+        </div>
+        <label for="scan-id">Scan UUID</label>
+        <input id="scan-id" placeholder="Filled after upload">
+        <div id="scan-status" class="status" aria-live="polite"></div>
+        <pre id="scan-output">Scan responses appear here.</pre>
+      </section>
+
+      <section>
+        <h2>4. Record clinician decision</h2>
+        <p class="hint">Sign in as doctor. The doctor records the clinical choice before assistant verification.</p>
+        <div class="check"><input id="decision-required" type="checkbox" checked><label for="decision-required">Follow-up required</label></div>
+        <label for="decision-severity">Severity</label>
+        <select id="decision-severity"><option>normal</option><option>moderate</option><option>severe</option></select>
+        <label for="decision-time">Clinician-selected appointment date/time (facility local time)</label>
+        <input id="decision-time" type="datetime-local">
+        <label for="facility-timezone">Facility IANA timezone</label>
+        <input id="facility-timezone" value="Asia/Kolkata">
+        <label for="decision-reason">Reason</label>
+        <input id="decision-reason" value="Synthetic local workflow check" maxlength="500">
+        <div class="buttons"><button type="button" id="record-decision">Record decision</button></div>
+        <div id="decision-status" class="status" aria-live="polite"></div>
+        <pre id="decision-output">Decision response appears here.</pre>
+      </section>
+
+      <section>
+        <h2>5. Verify scan as assistant</h2>
+        <p class="hint">Sign in as assistant_verifier. Confirm the identifiers match the patient and encounter records above.</p>
+        <label for="verify-patient">Patient identifier</label><input id="verify-patient" value="TEST-PATIENT-001">
+        <label for="verify-encounter">Encounter identifier</label><input id="verify-encounter" value="TEST-ENCOUNTER-001">
+        <div class="check"><input id="verify-required" type="checkbox" checked><label for="verify-required">Confirm follow-up required</label></div>
+        <label for="verify-severity">Confirmed severity</label>
+        <select id="verify-severity"><option>normal</option><option>moderate</option><option>severe</option></select>
+        <label for="verify-time">Confirmed appointment date/time (facility local time)</label>
+        <input id="verify-time" type="datetime-local">
+        <label for="verify-timezone">Timezone</label><input id="verify-timezone" value="Asia/Kolkata">
+        <label for="verify-reason">Review reason</label><input id="verify-reason" value="Synthetic identity and scan verification" maxlength="500">
+        <div class="buttons"><button type="button" id="verify-scan">Verify scan</button></div>
+        <div id="verify-status" class="status" aria-live="polite"></div>
+        <pre id="verify-output">Verification response appears here.</pre>
+      </section>
+
+      <section>
+        <h2>6. Policies</h2>
+        <p class="hint">Policy approval and activation require the supervisor account and an explicit approval reference.</p>
+        <div class="buttons"><button type="button" id="load-policies">Load policies</button></div>
+        <label for="policy-id">Policy UUID</label><input id="policy-id" placeholder="Filled after loading policies">
+        <label for="approval-reference">Approval reference</label><input id="approval-reference" placeholder="Required to approve a draft">
+        <div class="buttons">
+          <button type="button" id="approve-policy">Approve selected draft</button>
+          <button type="button" class="secondary" id="activate-policy">Activate approved policy</button>
+        </div>
+        <div id="policy-status" class="status" aria-live="polite"></div>
+        <pre id="policy-output">Policy responses appear here.</pre>
+      </section>
+
+      <section>
+        <h2>7. Follow-ups and reminder queue</h2>
+        <p class="hint">Use assistant, doctor, coordinator, supervisor, or auditor accounts according to the endpoint permissions.</p>
+        <div class="buttons">
+          <button type="button" id="load-followups">Load follow-ups</button>
+          <button type="button" class="secondary" id="load-reminders">Load due reminder tasks</button>
+        </div>
+        <div id="queue-status" class="status" aria-live="polite"></div>
+        <pre id="queue-output">Follow-up and reminder responses appear here.</pre>
+      </section>
+
+      <section class="wide">
+        <h2>Request activity</h2>
+        <p class="hint">Recent request method, path, status, and response summary. Bearer tokens are never printed here.</p>
+        <pre id="activity">Ready.</pre>
+      </section>
+    </div>
+  </main>
+  <script>
+    (() => {
+      let accessToken = "";
+      let currentUser = null;
+      const byId = (id) => document.getElementById(id);
+      const pretty = (value) => JSON.stringify(value, null, 2);
+      const setStatus = (id, message, state = "") => {
+        const node = byId(id);
+        node.textContent = message;
+        node.className = `status ${state}`;
+      };
+      const logActivity = (line) => {
+        const node = byId("activity");
+        node.textContent = `${new Date().toLocaleTimeString()}  ${line}\n${node.textContent}`.slice(0, 12000);
+      };
+      const request = async (path, options = {}) => {
+        const headers = new Headers(options.headers || {});
+        if (accessToken && options.auth !== false) headers.set("Authorization", `Bearer ${accessToken}`);
+        let body = options.body;
+        if (body && !(body instanceof FormData) && typeof body !== "string") {
+          headers.set("Content-Type", "application/json");
+          body = JSON.stringify(body);
+        }
+        const response = await fetch(path, { ...options, headers, body });
+        const text = await response.text();
+        let data;
+        try { data = text ? JSON.parse(text) : null; } catch { data = { response: text }; }
+        logActivity(`${options.method || "GET"} ${path} → ${response.status}`);
+        if (!response.ok) {
+          const message = data?.detail?.message || data?.detail?.code || response.statusText || "Request failed";
+          throw new Error(`${response.status}: ${message}`);
+        }
+        return data;
+      };
+      const run = async (statusId, outputId, operation) => {
+        setStatus(statusId, "Working…");
+        try {
+          const result = await operation();
+          if (outputId && result !== undefined) byId(outputId).textContent = pretty(result);
+          setStatus(statusId, "Complete", "good");
+          return result;
+        } catch (error) {
+          setStatus(statusId, error.message || "Request failed", "bad");
+          logActivity(`ERROR ${error.message || error}`);
+          return null;
+        }
+      };
+      const value = (id) => byId(id).value.trim();
+      const datetimeLocal = (id) => value(id) || null;
+      const randomKey = () => crypto.randomUUID();
+
+      byId("health").addEventListener("click", () => run("auth-status", "me-output", async () => {
+        const live = await request("/health/live", { auth: false });
+        const ready = await request("/health/ready", { auth: false });
+        return { liveness: live, readiness: ready };
+      }));
+
+      byId("login").addEventListener("click", () => run("auth-status", "me-output", async () => {
+        const username = value("username");
+        const token = await request("/api/v1/dev/token", { method: "POST", auth: false, body: { username } });
+        accessToken = token.access_token;
+        currentUser = await request("/api/v1/me");
+        byId("identity").textContent = `${currentUser.display_name} · ${currentUser.role}`;
+        if (currentUser.role === "doctor") byId("clinician-id").value = currentUser.id;
+        return currentUser;
+      }));
+
+      byId("create-patient").addEventListener("click", () => run("records-status", "records-output", async () => {
+        const result = await request("/api/v1/patients", {
+          method: "POST",
+          body: { hospital_patient_identifier: value("patient-identifier"), display_name: value("patient-name") || null },
+        });
+        byId("patient-id").value = result.id;
+        byId("verify-patient").value = value("patient-identifier");
+        return result;
+      }));
+
+      byId("create-encounter").addEventListener("click", () => run("records-status", "records-output", async () => {
+        const localValue = datetimeLocal("encounter-at");
+        if (!localValue) throw new Error("Choose an encounter time first");
+        const result = await request("/api/v1/encounters", {
+          method: "POST",
+          body: {
+            patient_id: value("patient-id"),
+            external_encounter_identifier: value("encounter-identifier"),
+            clinician_user_id: value("clinician-id"),
+            encounter_at: new Date(localValue).toISOString(),
+          },
+        });
+        byId("encounter-id").value = result.id;
+        byId("verify-encounter").value = value("encounter-identifier");
+        return result;
+      }));
+
+      byId("upload-scan").addEventListener("click", () => run("scan-status", "scan-output", async () => {
+        const file = byId("scan-file").files[0];
+        if (!file) throw new Error("Select an image file first");
+        const data = new FormData();
+        data.set("form_identifier", value("form-identifier") || `TEST-${Date.now()}`);
+        data.set("form_version", value("form-version"));
+        data.set("file", file);
+        const result = await request("/api/v1/scans", {
+          method: "POST", body: data, headers: { "Idempotency-Key": randomKey() },
+        });
+        byId("scan-id").value = result.id;
+        return result;
+      }));
+
+      byId("process-scan").addEventListener("click", () => run("scan-status", "scan-output", async () => {
+        const id = value("scan-id");
+        if (!id) throw new Error("Upload or enter a scan UUID first");
+        return request(`/api/v1/scans/${encodeURIComponent(id)}/process`, {
+          method: "POST", headers: { "Idempotency-Key": randomKey() },
+        });
+      }));
+
+      byId("review-scan").addEventListener("click", () => run("scan-status", "scan-output", async () => {
+        const id = value("scan-id");
+        if (!id) throw new Error("Enter a scan UUID first");
+        return request(`/api/v1/scans/${encodeURIComponent(id)}/review`);
+      }));
+
+      byId("record-decision").addEventListener("click", () => run("decision-status", "decision-output", async () => {
+        const id = value("scan-id");
+        if (!id) throw new Error("Upload or enter a scan UUID first");
+        const required = byId("decision-required").checked;
+        const localTime = required ? datetimeLocal("decision-time") : null;
+        if (required && !localTime) throw new Error("Choose an appointment time for required follow-up");
+        const body = {
+          followup_required: required,
+          severity: required ? value("decision-severity") : null,
+          scheduled_at_local: localTime,
+          timezone: value("facility-timezone"),
+          reason: value("decision-reason"),
+        };
+        const result = await request(`/api/v1/scans/${encodeURIComponent(id)}/decision`, { method: "POST", body });
+        byId("verify-required").checked = required;
+        byId("verify-severity").value = body.severity || "normal";
+        byId("verify-time").value = localTime || "";
+        byId("verify-timezone").value = body.timezone;
+        return result;
+      }));
+
+      byId("verify-scan").addEventListener("click", () => run("verify-status", "verify-output", async () => {
+        const id = value("scan-id");
+        if (!id) throw new Error("Upload or enter a scan UUID first");
+        const required = byId("verify-required").checked;
+        const localTime = required ? datetimeLocal("verify-time") : null;
+        if (required && !localTime) throw new Error("Choose the confirmed appointment time");
+        const body = {
+          result: "verified",
+          patient_identifier: value("verify-patient"),
+          encounter_identifier: value("verify-encounter"),
+          followup_required: required,
+          severity: required ? value("verify-severity") : null,
+          scheduled_at_local: localTime,
+          timezone: value("verify-timezone"),
+          reason: value("verify-reason"),
+        };
+        return request(`/api/v1/scans/${encodeURIComponent(id)}/verification`, {
+          method: "POST", body, headers: { "Idempotency-Key": randomKey() },
+        });
+      }));
+
+      byId("load-policies").addEventListener("click", () => run("policy-status", "policy-output", async () => {
+        const result = await request("/api/v1/policies");
+        if (result.items?.length) byId("policy-id").value = result.items[0].id;
+        return result;
+      }));
+
+      byId("approve-policy").addEventListener("click", () => run("policy-status", "policy-output", async () => {
+        const id = value("policy-id");
+        if (!id) throw new Error("Load policies or enter a policy UUID first");
+        return request(`/api/v1/policies/${encodeURIComponent(id)}/approve`, {
+          method: "POST", body: { approval_reference: value("approval-reference") },
+        });
+      }));
+
+      byId("activate-policy").addEventListener("click", () => run("policy-status", "policy-output", async () => {
+        const id = value("policy-id");
+        if (!id) throw new Error("Load policies or enter a policy UUID first");
+        return request(`/api/v1/policies/${encodeURIComponent(id)}/activate`, { method: "POST" });
+      }));
+
+      byId("load-followups").addEventListener("click", () => run("queue-status", "queue-output", () => request("/api/v1/followups")));
+      byId("load-reminders").addEventListener("click", () => run("queue-status", "queue-output", () => request("/api/v1/reminders/queue")));
+
+      const now = new Date();
+      now.setSeconds(0, 0);
+      const localInputValue = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      byId("encounter-at").value = localInputValue(new Date(now.getTime() - 60 * 60 * 1000));
+      byId("decision-time").value = localInputValue(new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000));
+      byId("verify-time").value = byId("decision-time").value;
+      run("auth-status", "me-output", async () => ({
+        liveness: await request("/health/live", { auth: false }),
+        readiness: await request("/health/ready", { auth: false }),
+      }));
+    })();
+  </script>
+</body>
+</html>

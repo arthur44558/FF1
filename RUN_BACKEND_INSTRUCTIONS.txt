@@ -1,0 +1,78 @@
+RUN THE BACKEND LOCALLY
+=======================
+
+This bundle contains the current FastAPI backend, PostgreSQL database setup,
+background worker, database migration, bootstrap script, and development test
+console. It uses a fake messaging provider; outbound messaging is disabled.
+Use synthetic data only.
+
+REQUIREMENTS
+- Docker Desktop (Windows/macOS) or Docker Engine (Linux)
+- Docker Compose v2 (`docker compose`)
+- Python 3.12 only to generate secrets (or use an equivalent secure generator)
+
+1. EXTRACT AND OPEN THE BACKEND DIRECTORY
+Extract this ZIP. Open a terminal in the extracted `backend` directory, where
+`compose.yaml` is located.
+
+2. CREATE LOCAL SETTINGS
+PowerShell:
+  Copy-Item .env.example .env
+
+macOS/Linux:
+  cp .env.example .env
+
+Generate one Fernet key for CONTACT_ENCRYPTION_KEY:
+PowerShell:
+  py -3.12 -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+macOS/Linux:
+  python3 -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+
+Generate a different random secret for each of DEV_AUTH_SECRET,
+CONTACT_FINGERPRINT_KEY, PROVIDER_WEBHOOK_SECRET, and POSTGRES_PASSWORD:
+PowerShell:
+  py -3.12 -c "import secrets; print(secrets.token_urlsafe(32))"
+macOS/Linux:
+  python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+
+Run the second command four times. Replace each matching placeholder in `.env`
+with its own generated value. Keep ENVIRONMENT=development,
+AUTH_MODE=development, MESSAGING_PROVIDER=fake, and
+OUTBOUND_MESSAGING_ENABLED=false for local development. Do not share the `.env`
+file or put it into source control.
+
+3. BUILD AND START API, DATABASE, AND WORKER
+  docker compose up --build -d
+
+The first start builds the API image and initializes PostgreSQL. Compose runs
+the database migration before starting the API and worker.
+
+4. CREATE LOCAL DEMO ACCOUNTS
+Run once after the services are up:
+  docker compose exec api python -m scripts.bootstrap
+
+5. OPEN THE BACKEND
+- Development test console: http://localhost:8000/test-console/
+- Interactive API docs: http://localhost:8000/docs
+- Liveness: http://localhost:8000/health/live
+- Readiness: http://localhost:8000/health/ready
+
+Demo usernames: doctor, assistant, coordinator, supervisor, admin, auditor.
+The development token endpoint is POST /api/v1/dev/token; tokens expire after
+15 minutes.
+
+COMMON COMMANDS
+View API and worker logs:
+  docker compose logs -f api worker
+Stop services (keeps the database volume):
+  docker compose down
+Stop and delete the local database volume (destructive to local test data):
+  docker compose down -v
+
+NOTES
+- The included form template is empty. Scan processing requires a clinic-approved,
+  calibrated template; the example coordinates are illustrative only.
+- This is a development package, not a production deployment. Production needs
+  separately configured OIDC, managed storage/database, and operational review.
+- The ZIP intentionally excludes local `.env` secrets, database files, scans,
+  virtual environments, caches, logs, and generated artifacts.

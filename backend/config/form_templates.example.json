@@ -1,0 +1,32 @@
+{
+  "clinic-form-v1": {
+    "image_size": [2480, 3508],
+    "marked_ratio_threshold": 0.18,
+    "default_appointment_time": null,
+    "checkbox_groups": {
+      "followup_required": {
+        "yes": [0.1, 0.1, 0.03, 0.02],
+        "no": [0.15, 0.1, 0.03, 0.02]
+      },
+      "severity": {
+        "normal": [0.1, 0.2, 0.03, 0.02],
+        "moderate": [0.15, 0.2, 0.03, 0.02],
+        "severe": [0.2, 0.2, 0.03, 0.02]
+      }
+    },
+    "text_regions": {
+      "appointment_date": {
+        "type": "appointment_date",
+        "rect": [0.1, 0.3, 0.2, 0.03]
+      },
+      "patient_identifier": {
+        "type": "patient_identifier",
+        "rect": [0.1, 0.4, 0.25, 0.03]
+      },
+      "encounter_identifier": {
+        "type": "encounter_identifier",
+        "rect": [0.1, 0.45, 0.25, 0.03]
+      }
+    }
+  }
+}

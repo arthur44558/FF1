@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hospital-followup-backend"
+version = "0.1.0"
+description = "Backend-only hospital follow-up coordination MVP"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "alembic==1.20.1",
+  "cryptography==46.0.3",
+  "fastapi==0.162.0",
+  "httpx==0.28.1",
+  "numpy==2.5.4",
+  "opencv-python-headless==4.14.0.94",
+  "Pillow==13.0.0",
+  "psycopg[binary]==3.3.6",
+  "pydantic==2.14.1",
+  "pydantic-settings==2.16.1",
+  "PyJWT[crypto]==2.15.1",
+  "pytesseract==0.3.13",
+  "python-multipart==0.0.20",
+  "SQLAlchemy==2.0.55",
+  "uvicorn[standard]==0.38.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
