@@ -55,3 +55,6 @@ pnpm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Temporary extraction folder
+source_materials/extracted/
